@@ -31,8 +31,12 @@ function isLate(date: Date) {
   return date.getHours() * 60 + date.getMinutes() > 9 * 60 + 35;
 }
 
-function statusColor(status: "present" | "late") {
-  return status === "present" ? "#16A34A" : "#CA8A04";
+type DayStatus = "present" | "late" | "absent";
+
+function statusColor(status: DayStatus) {
+  if (status === "present") return "#16A34A";
+  if (status === "late") return "#CA8A04";
+  return "#DC2626";
 }
 
 function formatTime(value: Date) {
@@ -79,7 +83,7 @@ export default function HistoryScreen() {
 
   // Build per-day status map for the displayed month
   const dayStatusMap = useMemo(() => {
-    const map = new Map<number, "present" | "late">();
+    const map = new Map<number, DayStatus>();
     records.forEach((r) => {
       if (r.checkInAt.getFullYear() === year && r.checkInAt.getMonth() === month) {
         const day = r.checkInAt.getDate();
@@ -90,6 +94,32 @@ export default function HistoryScreen() {
     });
     return map;
   }, [records, year, month]);
+
+  // Start of today, and the day of the employee's first-ever record. Days that
+  // fall between (first record … yesterday) with no attendance are "absent".
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const earliestRecordStart = useMemo(() => {
+    if (records.length === 0) return null;
+    return records.reduce((min, r) => {
+      const t = new Date(
+        r.checkInAt.getFullYear(),
+        r.checkInAt.getMonth(),
+        r.checkInAt.getDate(),
+      ).getTime();
+      return t < min ? t : min;
+    }, Infinity);
+  }, [records]);
+
+  const getDayStatus = (day: number): DayStatus | undefined => {
+    const recorded = dayStatusMap.get(day);
+    if (recorded) return recorded;
+    if (earliestRecordStart === null) return undefined;
+    const cellTime = new Date(year, month, day).getTime();
+    // Today and future days are never absent; neither are days before the
+    // employee's first record (i.e. before they started using the app).
+    if (cellTime >= todayStart || cellTime < earliestRecordStart) return undefined;
+    return "absent";
+  };
 
   const totalDays = getDaysInMonth(year, month);
   const firstDay = getFirstDayOfMonth(year, month);
@@ -125,13 +155,24 @@ export default function HistoryScreen() {
   const summary = useMemo(() => {
     let present = 0;
     let late = 0;
-    records.forEach((r) => {
-      if (!r.checkOutAt) return;
-      present += 1;
-      if (isLate(r.checkInAt)) late += 1;
-    });
-    return { present, late, absent: 0 };
-  }, [records]);
+    let absent = 0;
+    for (let day = 1; day <= totalDays; day++) {
+      const recorded = dayStatusMap.get(day);
+      if (recorded === "present") {
+        present += 1;
+        continue;
+      }
+      if (recorded === "late") {
+        late += 1;
+        continue;
+      }
+      if (earliestRecordStart === null) continue;
+      const cellTime = new Date(year, month, day).getTime();
+      if (cellTime >= todayStart || cellTime < earliestRecordStart) continue;
+      absent += 1;
+    }
+    return { present, late, absent };
+  }, [dayStatusMap, totalDays, earliestRecordStart, todayStart, year, month]);
 
   return (
     <View style={styles.screen}>
@@ -140,7 +181,7 @@ export default function HistoryScreen() {
       <View style={[styles.header, { paddingHorizontal: inset }]}>
         <BrandTitle size={28} />
         <Pressable style={styles.iconBtn} onPress={loadHistory}>
-          <Ionicons name="refresh" size={18} color="#2D1410" />
+          <Ionicons name="refresh" size={18} color="#0B2A1E" />
         </Pressable>
       </View>
 
@@ -158,13 +199,13 @@ export default function HistoryScreen() {
         {/* ── Month navigation ── */}
         <View style={styles.monthNav}>
           <TouchableOpacity onPress={goPrev} style={styles.navBtn}>
-            <Ionicons name="chevron-back" size={18} color="#2D1410" />
+            <Ionicons name="chevron-back" size={18} color="#0B2A1E" />
             <Text style={styles.navLabel}>Prev</Text>
           </TouchableOpacity>
           <Text style={styles.monthLabel}>{MONTHS[month]} {year}</Text>
           <TouchableOpacity onPress={goNext} style={styles.navBtn}>
             <Text style={styles.navLabel}>Next</Text>
-            <Ionicons name="chevron-forward" size={18} color="#2D1410" />
+            <Ionicons name="chevron-forward" size={18} color="#0B2A1E" />
           </TouchableOpacity>
         </View>
 
@@ -180,7 +221,7 @@ export default function HistoryScreen() {
             {calendarCells.map((cell, idx) => {
               if (cell === null) return <View key={`empty-${idx}`} style={styles.calCell} />;
 
-              const status = dayStatusMap.get(cell);
+              const status = getDayStatus(cell);
               const isSelected = cell === selectedDate;
               const bgColor = isSelected && status ? statusColor(status) : undefined;
 
@@ -210,6 +251,7 @@ export default function HistoryScreen() {
           <View style={styles.legend}>
             <LegendItem color="#16A34A" label="Present" />
             <LegendItem color="#CA8A04" label="Late" />
+            <LegendItem color="#DC2626" label="Absent" />
           </View>
         </View>
 
@@ -225,7 +267,7 @@ export default function HistoryScreen() {
 
         {filteredRecords.length === 0 && !isLoading ? (
           <View style={styles.emptyState}>
-            <MaterialCommunityIcons name="calendar-remove-outline" size={48} color="#C9B7A2" />
+            <MaterialCommunityIcons name="calendar-remove-outline" size={48} color="#B0C8B8" />
             <Text style={styles.emptyText}>No attendance records yet</Text>
           </View>
         ) : (
@@ -311,7 +353,7 @@ function TimeBlock({
   return (
     <View style={styles.timeBlock}>
       <View style={styles.timeLabelRow}>
-        <MaterialCommunityIcons name={icon} size={11} color="#A8907C" />
+        <MaterialCommunityIcons name={icon} size={11} color="#8FA89A" />
         <Text style={styles.timeLabel}>{label}</Text>
       </View>
       <Text style={styles.timeValue}>{value}</Text>
@@ -324,7 +366,7 @@ function TimeBlock({
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#FAFAF7",
+    backgroundColor: "#F2FBF6",
   },
   header: {
     flexDirection: "row",
@@ -340,13 +382,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#ffffff",
-    shadowColor: "#2D1410",
+    shadowColor: "#0B2A1E",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 6,
     elevation: 2,
     borderWidth: 1,
-    borderColor: "rgba(45, 20, 16, 0.04)",
+    borderColor: "rgba(11, 42, 30, 0.04)",
   },
   scroll: {
     paddingTop: 8,
@@ -368,13 +410,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 12,
     borderRadius: 14,
-    shadowColor: "#2D1410",
+    shadowColor: "#0B2A1E",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
     shadowRadius: 8,
     elevation: 2,
     borderWidth: 1,
-    borderColor: "rgba(45, 20, 16, 0.04)",
+    borderColor: "rgba(11, 42, 30, 0.04)",
   },
   summaryDot: {
     width: 8,
@@ -384,12 +426,12 @@ const styles = StyleSheet.create({
   summaryValue: {
     fontSize: 17,
     fontWeight: "700",
-    color: "#2D1410",
+    color: "#0B2A1E",
     lineHeight: 20,
   },
   summaryLabel: {
     fontSize: 10,
-    color: "#A8907C",
+    color: "#8FA89A",
     fontWeight: "600",
     textTransform: "uppercase",
     letterSpacing: 0.6,
@@ -412,17 +454,17 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#E8DDD0",
+    borderColor: "#C6E8D5",
   },
   navLabel: {
     fontSize: 13,
-    color: "#2D1410",
+    color: "#0B2A1E",
     fontWeight: "500",
   },
   monthLabel: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#2D1410",
+    color: "#0B2A1E",
   },
 
   // Calendar
@@ -431,13 +473,13 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 16,
     marginBottom: 20,
-    shadowColor: "#2D1410",
+    shadowColor: "#0B2A1E",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 10,
     elevation: 3,
     borderWidth: 1,
-    borderColor: "rgba(45, 20, 16, 0.04)",
+    borderColor: "rgba(11, 42, 30, 0.04)",
   },
   calRow: {
     flexDirection: "row",
@@ -448,7 +490,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: 11,
     fontWeight: "700",
-    color: "#A8907C",
+    color: "#8FA89A",
     textTransform: "uppercase",
     letterSpacing: 0.4,
   },
@@ -457,7 +499,9 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
   },
   calCell: {
-    width: `${100 / 7}%`,
+    // 14.2857% (not 100/7 ≈ 14.285714…%) so 7 cells stay just under 100% and
+    // the 7th column (Saturday) doesn't wrap to the next row.
+    width: "14.2857%",
     aspectRatio: 1,
     alignItems: "center",
     justifyContent: "center",
@@ -467,11 +511,11 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   calCellSelectedEmpty: {
-    backgroundColor: "rgba(196, 32, 23, 0.12)",
+    backgroundColor: "rgba(5, 150, 105, 0.12)",
   },
   calDate: {
     fontSize: 14,
-    color: "#2D1410",
+    color: "#0B2A1E",
     fontWeight: "500",
   },
   calDateSelected: {
@@ -491,7 +535,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: "#F0EAE0",
+    borderTopColor: "#DAF1E6",
   },
   legendItem: {
     flexDirection: "row",
@@ -505,7 +549,7 @@ const styles = StyleSheet.create({
   },
   legendLabel: {
     fontSize: 11,
-    color: "#A8907C",
+    color: "#8FA89A",
     fontWeight: "600",
   },
 
@@ -513,7 +557,7 @@ const styles = StyleSheet.create({
   sectionLabel: {
     fontSize: 15,
     fontWeight: "700",
-    color: "#2D1410",
+    color: "#0B2A1E",
     marginBottom: 12,
   },
 
@@ -521,7 +565,7 @@ const styles = StyleSheet.create({
   messageText: {
     textAlign: "center",
     marginVertical: 12,
-    color: "#7A5A48",
+    color: "#5A7264",
     fontWeight: "600",
   },
   errorText: {
@@ -537,7 +581,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 14,
-    color: "#A8907C",
+    color: "#8FA89A",
     fontWeight: "500",
   },
 
@@ -547,13 +591,13 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: 14,
     marginBottom: 10,
-    shadowColor: "#2D1410",
+    shadowColor: "#0B2A1E",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
     shadowRadius: 10,
     elevation: 2,
     borderWidth: 1,
-    borderColor: "rgba(45, 20, 16, 0.04)",
+    borderColor: "rgba(11, 42, 30, 0.04)",
   },
   cardHeader: {
     flexDirection: "row",
@@ -567,19 +611,19 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(196, 32, 23, 0.08)",
+    backgroundColor: "rgba(5, 150, 105, 0.08)",
   },
   badgeDate: {
     fontSize: 22,
     fontWeight: "700",
     lineHeight: 24,
-    color: "#C42017",
+    color: "#059669",
   },
   badgeDay: {
     fontSize: 10,
     fontWeight: "700",
     textTransform: "uppercase",
-    color: "#C42017",
+    color: "#059669",
   },
   branchInfo: {
     flex: 1,
@@ -588,16 +632,16 @@ const styles = StyleSheet.create({
   branchName: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#2D1410",
+    color: "#0B2A1E",
   },
   branchDate: {
     fontSize: 12,
-    color: "#A8907C",
+    color: "#8FA89A",
   },
   timeRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FBF7EE",
+    backgroundColor: "#E7F7EF",
     borderRadius: 12,
     paddingVertical: 12,
   },
@@ -614,12 +658,12 @@ const styles = StyleSheet.create({
   timeValue: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#2D1410",
+    color: "#0B2A1E",
     fontVariant: ["tabular-nums"],
   },
   timeLabel: {
     fontSize: 10,
-    color: "#A8907C",
+    color: "#8FA89A",
     fontWeight: "600",
     textTransform: "uppercase",
     letterSpacing: 0.5,
@@ -627,6 +671,6 @@ const styles = StyleSheet.create({
   verticalDivider: {
     width: 1,
     height: 28,
-    backgroundColor: "#E8DDD0",
+    backgroundColor: "#C6E8D5",
   },
 });

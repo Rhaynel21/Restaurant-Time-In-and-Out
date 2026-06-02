@@ -73,7 +73,7 @@ async function getDb() {
 }
 
 async function openAndMigrate() {
-  const db = await SQLite.openDatabaseAsync("kopiklock-offline.db");
+  const db = await SQLite.openDatabaseAsync("kitchen-in-and-out.db");
 
   await db.execAsync(`
     PRAGMA journal_mode = WAL;

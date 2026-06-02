@@ -52,7 +52,7 @@ export function BottomNav({ active }: { active: TabKey }) {
         if (isActive) {
           return (
             <View key={tab.key} style={styles.activeTab}>
-              <Ionicons name={tab.activeIcon} size={16} color={Colors.darkSurface} />
+              <Ionicons name={tab.activeIcon} size={16} color={Colors.textOnDark} />
               <Text style={styles.activeTabText}>{tab.label}</Text>
             </View>
           );
@@ -96,20 +96,20 @@ const styles = StyleSheet.create({
     height: 48,
     minWidth: 112,
     borderRadius: 24,
-    backgroundColor: Colors.accent,
+    backgroundColor: Colors.primary,
     paddingHorizontal: 18,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 7,
-    shadowColor: Colors.accent,
+    shadowColor: Colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4,
     shadowRadius: 10,
     elevation: 4,
   },
   activeTabText: {
-    color: Colors.darkSurface,
+    color: Colors.textOnDark,
     fontWeight: "700",
     fontSize: 13,
     letterSpacing: 0.2,

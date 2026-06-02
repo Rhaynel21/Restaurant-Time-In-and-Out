@@ -15,9 +15,9 @@ export default function ProfileScreen() {
   const user = {
     name: employee?.fullName ?? "Alfred Cabato",
     phone: employee?.phone ?? "+63 917 555 0101",
-    email: employee?.email ?? "alfred.cabato@kopiklock.local",
-    role: employee?.role ?? "Barista",
-    branch: selectedBranch?.name ?? employee?.branchName ?? "Kopiko - BGC",
+    email: employee?.email ?? "alfred.cabato@thymein.local",
+    role: employee?.role ?? "Line Cook",
+    branch: selectedBranch?.name ?? employee?.branchName ?? "Thyme In - BGC",
     employeeId: employee?.employeeId ?? "EMP-0001",
   };
 
@@ -28,7 +28,7 @@ export default function ProfileScreen() {
           <View style={styles.bannerOverlay} />
 
           <View style={styles.topBar}>
-            <BrandTitle size={28} variant="onRed" />
+            <BrandTitle size={28} variant="onPrimary" />
             <TouchableOpacity style={styles.topBarBtn}>
               <Ionicons name="settings-outline" size={18} color="#ffffff" />
             </TouchableOpacity>
@@ -54,7 +54,7 @@ export default function ProfileScreen() {
         <View style={styles.identitySection}>
           <Text style={styles.userName}>{user.name}</Text>
           <View style={styles.rolePill}>
-            <Ionicons name="briefcase-outline" size={11} color="#C42017" />
+            <Ionicons name="briefcase-outline" size={11} color="#059669" />
             <Text style={styles.roleText}>{user.role}</Text>
           </View>
         </View>
@@ -95,7 +95,7 @@ export default function ProfileScreen() {
           />
         </View>
 
-        <Text style={styles.copyright}>© 2026 Kopiklock · v1.0.0</Text>
+        <Text style={styles.copyright}>© 2026 Thyme In · v1.0.0</Text>
       </ScrollView>
 
       <BottomNav active="profile" />
@@ -115,7 +115,7 @@ function InfoRow({
   return (
     <View style={styles.infoRow}>
       <View style={styles.infoIconWrap}>
-        <MaterialCommunityIcons name={icon} size={18} color="#6B4434" />
+        <MaterialCommunityIcons name={icon} size={18} color="#44604F" />
       </View>
       <View style={{ flex: 1 }}>
         <Text style={styles.infoLabel}>{label}</Text>
@@ -141,10 +141,10 @@ function MenuItem({
   return (
     <TouchableOpacity style={styles.menuItem} onPress={onPress} activeOpacity={0.6}>
       <View style={[styles.menuIconWrap, danger && styles.menuIconDanger]}>
-        <MaterialCommunityIcons name={icon} size={18} color={danger ? "#DC2626" : "#6B4434"} />
+        <MaterialCommunityIcons name={icon} size={18} color={danger ? "#DC2626" : "#44604F"} />
       </View>
       <Text style={[styles.menuLabel, danger && styles.menuLabelDanger]}>{label}</Text>
-      <Ionicons name="chevron-forward" size={18} color={danger ? "#DC2626" : "#C9B7A2"} />
+      <Ionicons name="chevron-forward" size={18} color={danger ? "#DC2626" : "#B0C8B8"} />
     </TouchableOpacity>
   );
 }
@@ -152,7 +152,7 @@ function MenuItem({
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#FAFAF7",
+    backgroundColor: "#F2FBF6",
   },
   scroll: {
     paddingBottom: 130,
@@ -161,12 +161,12 @@ const styles = StyleSheet.create({
   heroBanner: {
     width: "100%",
     height: 200,
-    backgroundColor: "#C42017",
+    backgroundColor: "#059669",
     overflow: "hidden",
   },
   bannerOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "#4D2211",
+    backgroundColor: "#1E3A2C",
     opacity: 0.4,
   },
   topBar: {
@@ -194,7 +194,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#2D1410",
+    shadowColor: "#0B2A1E",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.15,
     shadowRadius: 16,
@@ -211,7 +211,7 @@ const styles = StyleSheet.create({
   avatarInitials: {
     fontSize: 30,
     fontWeight: "700",
-    color: "#1F0A07",
+    color: "#0A3326",
     letterSpacing: -0.5,
   },
   statusBadge: {
@@ -240,7 +240,7 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 22,
     fontWeight: "700",
-    color: "#2D1410",
+    color: "#0B2A1E",
     letterSpacing: -0.4,
   },
   rolePill: {
@@ -249,13 +249,13 @@ const styles = StyleSheet.create({
     gap: 5,
     paddingHorizontal: 12,
     paddingVertical: 5,
-    backgroundColor: "rgba(196, 32, 23, 0.08)",
+    backgroundColor: "rgba(5, 150, 105, 0.08)",
     borderRadius: 12,
   },
   roleText: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#C42017",
+    color: "#059669",
   },
   infoCard: {
     width: "88%",
@@ -263,13 +263,13 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
     borderRadius: 18,
     padding: 4,
-    shadowColor: "#2D1410",
+    shadowColor: "#0B2A1E",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05,
     shadowRadius: 12,
     elevation: 2,
     borderWidth: 1,
-    borderColor: "rgba(45, 20, 16, 0.04)",
+    borderColor: "rgba(11, 42, 30, 0.04)",
     marginBottom: 24,
   },
   infoRow: {
@@ -283,13 +283,13 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 10,
-    backgroundColor: "#F5EFE3",
+    backgroundColor: "#DAF1E6",
     alignItems: "center",
     justifyContent: "center",
   },
   infoLabel: {
     fontSize: 11,
-    color: "#A8907C",
+    color: "#8FA89A",
     fontWeight: "600",
     textTransform: "uppercase",
     letterSpacing: 0.6,
@@ -297,7 +297,7 @@ const styles = StyleSheet.create({
   infoValue: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#2D1410",
+    color: "#0B2A1E",
     marginTop: 2,
   },
   sectionLabel: {
@@ -305,7 +305,7 @@ const styles = StyleSheet.create({
     maxWidth: 460,
     fontSize: 11,
     fontWeight: "700",
-    color: "#7A5A48",
+    color: "#5A7264",
     letterSpacing: 1.4,
     textTransform: "uppercase",
     marginBottom: 8,
@@ -317,13 +317,13 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
     borderRadius: 18,
     padding: 4,
-    shadowColor: "#2D1410",
+    shadowColor: "#0B2A1E",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05,
     shadowRadius: 12,
     elevation: 2,
     borderWidth: 1,
-    borderColor: "rgba(45, 20, 16, 0.04)",
+    borderColor: "rgba(11, 42, 30, 0.04)",
     marginBottom: 12,
   },
   menuItem: {
@@ -337,7 +337,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 10,
-    backgroundColor: "#F5EFE3",
+    backgroundColor: "#DAF1E6",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -348,20 +348,20 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontWeight: "600",
-    color: "#2D1410",
+    color: "#0B2A1E",
   },
   menuLabelDanger: {
     color: "#DC2626",
   },
   divider: {
     height: 1,
-    backgroundColor: "#F5EFE3",
+    backgroundColor: "#DAF1E6",
     marginHorizontal: 14,
   },
   copyright: {
     marginTop: 20,
     fontSize: 11,
-    color: "#A8907C",
+    color: "#8FA89A",
     textAlign: "center",
     fontWeight: "500",
     letterSpacing: 0.3,

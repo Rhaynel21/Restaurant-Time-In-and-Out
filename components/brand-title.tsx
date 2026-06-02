@@ -1,24 +1,24 @@
 import { StyleSheet, Text, View } from "react-native";
 
-import { KopiklockMark } from "@/components/kopiklock-mark";
+import { KitchenMark } from "@/components/kitchen-mark";
 import { Colors } from "@/constants/theme";
 
-type Variant = "light" | "onRed";
+type Variant = "light" | "onPrimary";
 
 type Props = {
   /** Icon diameter in px. Defaults to 30. */
   size?: number;
-  /** "light" = brand-red text for cream surfaces; "onRed" = cream text for the red banner. */
+  /** "light" = green text for light surfaces; "onPrimary" = light text for the green banner. */
   variant?: Variant;
 };
 
 export function BrandTitle({ size = 30, variant = "light" }: Props) {
-  const isOnRed = variant === "onRed";
+  const isOnPrimary = variant === "onPrimary";
   return (
     <View style={styles.row}>
-      <KopiklockMark size={size} />
-      <Text style={[styles.text, isOnRed ? styles.textOnRed : styles.textLight]}>
-        Kopiklock
+      <KitchenMark size={size} />
+      <Text style={[styles.text, isOnPrimary ? styles.textOnPrimary : styles.textLight]}>
+        Thyme In
       </Text>
     </View>
   );
@@ -38,7 +38,7 @@ const styles = StyleSheet.create({
   textLight: {
     color: Colors.primary,
   },
-  textOnRed: {
+  textOnPrimary: {
     color: Colors.textOnDark,
   },
 });

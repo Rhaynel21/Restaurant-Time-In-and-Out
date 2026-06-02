@@ -1,13 +1,13 @@
 export const Colors = {
-  primary: "#C42017", // Kopiko Red
-  primaryDark: "#A00405", // Deep red — pressed states
-  secondary: "#FFC720", // Kopiko Gold — accents
-  background: "#FFF8EC", // Cream — soft surfaces
-  surface: "#4D2211", // Coffee brown — dark surface
-  surfaceMuted: "#FDF4E3", // Light cream surface
-  text: "#1E2125", // Near-black text
+  primary: "#059669", // Emerald
+  primaryDark: "#047857", // Deep emerald — pressed states
+  secondary: "#FFC720", // Honey — accents
+  background: "#F2FBF6", // Mint canvas
+  surface: "#0A3326", // Deep emerald — dark surface
+  surfaceMuted: "#E7F7EF", // Light emerald surface
+  text: "#0B2A1E", // Near-black emerald text
   textMuted: "#7C8492",
-  textOnDark: "#FFF8EC",
+  textOnDark: "#ECFDF5",
   danger: "#DC2626",
   warning: "#D2A23D", // Aged gold
   success: "#16A34A",

@@ -66,6 +66,13 @@ function normalizeEmployeeId(input: string) {
   return trimmed.length > 0 ? trimmed : DEFAULT_EMPLOYEE_ID;
 }
 
+// Migrate emails seeded under old brand names (kopiklock / kitcheninout) to the
+// current "thymein.local" domain so records created before the rebrand update
+// themselves on next load.
+function normalizeBrandEmail(email: string) {
+  return email.replace(/@(kopiklock|kitcheninout)\.local$/i, "@thymein.local");
+}
+
 function timestampToDate(value: unknown) {
   if (value instanceof Timestamp) return value.toDate();
   if (value && typeof value === "object" && "seconds" in value) {
@@ -80,7 +87,7 @@ function toEmployeeProfile(profile: LocalEmployeeProfile): EmployeeProfile {
     firstName: profile.firstName,
     lastName: profile.lastName,
     fullName: profile.fullName,
-    email: profile.email,
+    email: normalizeBrandEmail(profile.email),
     phone: profile.phone,
     role: profile.role,
     branchId: profile.branchId,
@@ -180,11 +187,11 @@ export async function ensureEmployeeProfile(employeeIdInput: string) {
         firstName: "Alfred",
         lastName: "Cabato",
         fullName: "Alfred Cabato",
-        email: "alfred.cabato@kopiklock.local",
+        email: "alfred.cabato@thymein.local",
         phone: "+63 917 555 0101",
-        role: "Barista",
-        branchId: "kopiko-bgc",
-        branchName: "Kopiko - BGC",
+        role: "Line Cook",
+        branchId: "kio-bgc",
+        branchName: "Thyme In - BGC",
       };
 
       await setDoc(ref, {
@@ -204,12 +211,17 @@ export async function ensureEmployeeProfile(employeeIdInput: string) {
       firstName: data.firstName ?? "Alfred",
       lastName: data.lastName ?? "Cabato",
       fullName: data.fullName ?? "Alfred Cabato",
-      email: data.email ?? "alfred.cabato@kopiklock.local",
+      email: normalizeBrandEmail(data.email ?? "alfred.cabato@thymein.local"),
       phone: data.phone ?? "+63 917 555 0101",
-      role: data.role ?? "Barista",
-      branchId: data.branchId ?? "kopiko-bgc",
-      branchName: data.branchName ?? "Kopiko - BGC",
+      role: data.role ?? "Line Cook",
+      branchId: data.branchId ?? "kio-bgc",
+      branchName: data.branchName ?? "Thyme In - BGC",
     };
+
+    // If the stored email used an old brand domain, persist the migrated value.
+    if (data.email && data.email !== profile.email) {
+      await setDoc(ref, { email: profile.email, updatedAt: serverTimestamp() }, { merge: true });
+    }
 
     await upsertEmployeeLocal(profile);
     await setLastSignedInEmployee(employeeId);

@@ -1,31 +1,31 @@
 export const Colors = {
-  // Brand
-  primary: "#C42017",        // Kopiko Red — main brand
-  primaryDark: "#A51A12",    // Pressed / dark accent
-  primaryDeep: "#7A1209",    // Deepest red, rarely used
-  primaryTint: "rgba(196, 32, 23, 0.08)", // Subtle brand wash
-  primaryTintStrong: "rgba(196, 32, 23, 0.18)",
-  accent: "#FFC720",         // Kopiko Gold — highlights
+  // Brand — Thyme In (Esmeralda / emerald green)
+  primary: "#059669",        // Emerald — main brand
+  primaryDark: "#047857",    // Pressed / dark accent
+  primaryDeep: "#065F46",    // Deepest emerald, rarely used
+  primaryTint: "rgba(5, 150, 105, 0.08)", // Subtle brand wash
+  primaryTintStrong: "rgba(5, 150, 105, 0.18)",
+  accent: "#FFC720",         // Warm honey — highlights (pairs with emerald)
 
-  // Surfaces (warm)
-  background: "#FAFAF7",     // App canvas
+  // Surfaces (cool emerald-tinted neutrals)
+  background: "#F2FBF6",     // App canvas (mint)
   cardSurface: "#ffffff",
-  warmSurface: "#FBF7EE",    // Cream surface
-  warmSurfaceAlt: "#F5EFE3", // Slightly deeper cream
-  warmBorder: "#E8DDD0",     // Hairline border
+  warmSurface: "#E7F7EF",    // Soft emerald surface
+  warmSurfaceAlt: "#DAF1E6", // Slightly deeper emerald wash
+  warmBorder: "#C6E8D5",     // Hairline border
 
   // Dark surface (bottom bar, avatars)
-  darkSurface: "#1F0A07",
-  darkSurfaceAlt: "#2D1410",
+  darkSurface: "#0A3326",
+  darkSurfaceAlt: "#0B2A1E",
 
-  // Text scale (warm browns)
-  textPrimary: "#2D1410",
-  textBody: "#4D2211",
-  textMuted: "#6B4434",
-  textSubtle: "#7A5A48",
-  textFaint: "#A8907C",
-  textPlaceholder: "#C9B7A2",
-  textOnDark: "#FFF8EC",
+  // Text scale (emerald-charcoal)
+  textPrimary: "#0B2A1E",
+  textBody: "#1E3A2C",
+  textMuted: "#44604F",
+  textSubtle: "#5A7264",
+  textFaint: "#8FA89A",
+  textPlaceholder: "#B0C8B8",
+  textOnDark: "#ECFDF5",
 
   // Status
   success: "#16A34A",
@@ -39,8 +39,8 @@ export const Colors = {
   info: "#3B82F6",
 
   // Hairline / shadow tokens
-  hairline: "rgba(45, 20, 16, 0.04)",
-  shadowWarm: "#2D1410",
+  hairline: "rgba(11, 42, 30, 0.05)",
+  shadowWarm: "#0B2A1E",
 };
 
 export const Fonts = {

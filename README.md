@@ -1,6 +1,6 @@
-# Kopiklock
+# Thyme In
 
-Workforce attendance app for Kopiklock — built with [Expo](https://expo.dev) and React Native.
+Workforce attendance app for Thyme In — built with [Expo](https://expo.dev) and React Native.
 
 ## Get started
 

@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { Animated, PanResponder, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { AmbientTop } from "@/components/ambient-top";
-import { KopiklockMark } from "@/components/kopiklock-mark";
+import { KitchenMark } from "@/components/kitchen-mark";
 import { useSession } from "@/contexts/session-context";
 import { useResponsiveInset } from "@/hooks/use-responsive";
 import { saveEmployeeBranch } from "@/lib/attendance";
@@ -13,7 +13,7 @@ import { Branch, LocationPoint, findNearestBranch } from "@/lib/branches";
 
 const LOCATING_STEPS = [
   "Checking your GPS location...",
-  "Finding nearby Kopiko branch...",
+  "Finding nearby Thyme In branch...",
   "Matching your location with branch data...",
 ];
 
@@ -237,7 +237,7 @@ export default function SelectBranch() {
   const swipeThreshold = swipeRange * 0.72;
   const isReadyToSwipe = Boolean(detectedBranch) && hasConfirmedLocation && hasConfirmedBranch;
   const isSwipeDisabled = !isReadyToSwipe || isPunchingIn || isPunchSuccess;
-  const thumbIconColor = isPunchSuccess ? "#A8907C" : isSwipeDisabled ? "#A8907C" : "#C42017";
+  const thumbIconColor = isPunchSuccess ? "#8FA89A" : isSwipeDisabled ? "#8FA89A" : "#059669";
 
   const resetSlider = () => {
     Animated.spring(sliderX, {
@@ -322,7 +322,7 @@ export default function SelectBranch() {
 
       <View style={styles.topRow}>
         <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8}>
-          <Ionicons name="chevron-back" size={20} color="#2D1410" />
+          <Ionicons name="chevron-back" size={20} color="#0B2A1E" />
         </Pressable>
         <View style={styles.stepIndicator}>
           <View style={styles.stepProgress}>
@@ -334,7 +334,7 @@ export default function SelectBranch() {
           </View>
         </View>
         <View style={styles.brandSlot}>
-          <KopiklockMark size={40} />
+          <KitchenMark size={40} />
         </View>
       </View>
 
@@ -378,7 +378,7 @@ export default function SelectBranch() {
 
         <Animated.View style={{ transform: [{ scale: isLocating ? pinScale : 1 }] }}>
           <View style={styles.pinShadow}>
-            <MaterialCommunityIcons name="map-marker" size={78} color="#C42017" />
+            <MaterialCommunityIcons name="map-marker" size={78} color="#059669" />
           </View>
         </Animated.View>
         {hasConfirmedLocation && (
@@ -412,12 +412,12 @@ export default function SelectBranch() {
           }}
         >
           <View style={styles.branchIconWrap}>
-            <Ionicons name="business" size={20} color="#C42017" />
+            <Ionicons name="business" size={20} color="#059669" />
           </View>
           <View style={styles.branchInfo}>
             <Text style={styles.branchName}>{detectedBranch.name}</Text>
             <View style={styles.branchAddressRow}>
-              <Ionicons name="location-outline" size={12} color="#A8907C" />
+              <Ionicons name="location-outline" size={12} color="#8FA89A" />
               <Text style={styles.branchAddress} numberOfLines={1}>
                 {detectedBranch.address}
               </Text>
@@ -441,7 +441,7 @@ export default function SelectBranch() {
 
       {detectedBranch && !isReadyToSwipe && (
         <View style={styles.selectionHintWrap}>
-          <Ionicons name="information-circle" size={13} color="#C42017" />
+          <Ionicons name="information-circle" size={13} color="#059669" />
           <Text style={styles.selectionHint}>Tap the card to confirm and unlock swipe</Text>
         </View>
       )}
@@ -491,7 +491,7 @@ export default function SelectBranch() {
       </View>
 
       <Pressable style={styles.secondaryButton} onPress={() => setScanId((prev) => prev + 1)}>
-        <Ionicons name="refresh" size={14} color="#6B4434" />
+        <Ionicons name="refresh" size={14} color="#44604F" />
         <Text style={styles.secondaryButtonText}>Scan again</Text>
       </Pressable>
     </View>
@@ -501,7 +501,7 @@ export default function SelectBranch() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#FAFAF7",
+    backgroundColor: "#F2FBF6",
     paddingTop: 60,
   },
   topRow: {
@@ -517,13 +517,13 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#2D1410",
+    shadowColor: "#0B2A1E",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
     shadowRadius: 8,
     elevation: 2,
     borderWidth: 1,
-    borderColor: "rgba(45, 20, 16, 0.04)",
+    borderColor: "rgba(11, 42, 30, 0.04)",
   },
   brandSlot: {
     width: 40,
@@ -544,19 +544,19 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "#E8DDD0",
+    backgroundColor: "#C6E8D5",
   },
   stepDotActive: {
-    backgroundColor: "#C42017",
+    backgroundColor: "#059669",
   },
   stepLine: {
     width: 24,
     height: 2,
     borderRadius: 1,
-    backgroundColor: "#E8DDD0",
+    backgroundColor: "#C6E8D5",
   },
   stepLineActive: {
-    backgroundColor: "#C42017",
+    backgroundColor: "#059669",
   },
   headerWrap: {
     alignItems: "center",
@@ -565,7 +565,7 @@ const styles = StyleSheet.create({
   eyebrow: {
     fontSize: 11,
     fontWeight: "600",
-    color: "#C42017",
+    color: "#059669",
     letterSpacing: 2,
     textTransform: "uppercase",
   },
@@ -573,7 +573,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: 26,
     fontWeight: "700",
-    color: "#2D1410",
+    color: "#0B2A1E",
     letterSpacing: -0.5,
     marginTop: 2,
   },
@@ -583,7 +583,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 12,
     fontSize: 14,
     lineHeight: 20,
-    color: "#7A5A48",
+    color: "#5A7264",
   },
   mapArea: {
     marginTop: 32,
@@ -595,18 +595,18 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: "rgba(45, 20, 16, 0.06)",
-    shadowColor: "#2D1410",
+    borderColor: "rgba(11, 42, 30, 0.06)",
+    shadowColor: "#0B2A1E",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.05,
     shadowRadius: 20,
     elevation: 3,
   },
   mapAreaDetected: {
-    borderColor: "rgba(196, 32, 23, 0.18)",
+    borderColor: "rgba(5, 150, 105, 0.18)",
   },
   mapAreaSelected: {
-    borderColor: "#C42017",
+    borderColor: "#059669",
     borderWidth: 2,
   },
   ripple: {
@@ -614,7 +614,7 @@ const styles = StyleSheet.create({
     width: 170,
     height: 170,
     borderRadius: 85,
-    backgroundColor: "rgba(196, 32, 23, 0.12)",
+    backgroundColor: "rgba(5, 150, 105, 0.12)",
   },
   rippleOuter: {
     position: "absolute",
@@ -622,10 +622,10 @@ const styles = StyleSheet.create({
     height: 200,
     borderRadius: 100,
     borderWidth: 1.5,
-    borderColor: "rgba(196, 32, 23, 0.2)",
+    borderColor: "rgba(5, 150, 105, 0.2)",
   },
   pinShadow: {
-    shadowColor: "#C42017",
+    shadowColor: "#059669",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 10,
@@ -654,30 +654,30 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 20,
     backgroundColor: "#ffffff",
-    shadowColor: "#2D1410",
+    shadowColor: "#0B2A1E",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
     shadowRadius: 8,
     elevation: 2,
     borderWidth: 1,
-    borderColor: "rgba(45, 20, 16, 0.04)",
+    borderColor: "rgba(11, 42, 30, 0.04)",
   },
   statusDotPulse: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "#C42017",
+    backgroundColor: "#059669",
   },
   statusLabel: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#4D2211",
+    color: "#1E3A2C",
   },
   locationMeta: {
     marginTop: 10,
     textAlign: "center",
     fontSize: 12,
-    color: "#7A5A48",
+    color: "#5A7264",
     fontWeight: "500",
   },
   locationError: {
@@ -695,23 +695,23 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    shadowColor: "#2D1410",
+    shadowColor: "#0B2A1E",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.06,
     shadowRadius: 14,
     elevation: 3,
     borderWidth: 1,
-    borderColor: "rgba(45, 20, 16, 0.04)",
+    borderColor: "rgba(11, 42, 30, 0.04)",
   },
   branchCardSelected: {
     borderWidth: 1.5,
-    borderColor: "#C42017",
+    borderColor: "#059669",
   },
   branchIconWrap: {
     width: 44,
     height: 44,
     borderRadius: 12,
-    backgroundColor: "rgba(196, 32, 23, 0.08)",
+    backgroundColor: "rgba(5, 150, 105, 0.08)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -731,21 +731,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 8,
-    backgroundColor: "#F5EFE3",
+    backgroundColor: "#DAF1E6",
     borderWidth: 1,
-    borderColor: "#E8DDD0",
+    borderColor: "#C6E8D5",
   },
   branchTapHintText: {
     fontSize: 10,
     fontWeight: "700",
-    color: "#6B4434",
+    color: "#44604F",
     letterSpacing: 1.2,
     textTransform: "uppercase",
   },
   branchName: {
     fontSize: 15,
     fontWeight: "700",
-    color: "#2D1410",
+    color: "#0B2A1E",
     letterSpacing: -0.2,
   },
   branchAddressRow: {
@@ -756,7 +756,7 @@ const styles = StyleSheet.create({
   branchAddress: {
     flex: 1,
     fontSize: 12,
-    color: "#A8907C",
+    color: "#8FA89A",
   },
   placeholderCard: {
     marginTop: 16,
@@ -766,12 +766,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#E8DDD0",
+    borderColor: "#C6E8D5",
     borderStyle: "dashed",
   },
   placeholderText: {
     fontSize: 13,
-    color: "#A8907C",
+    color: "#8FA89A",
     fontWeight: "500",
   },
   selectionHintWrap: {
@@ -782,7 +782,7 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   selectionHint: {
-    color: "#C42017",
+    color: "#059669",
     fontSize: 12,
     fontWeight: "500",
   },
@@ -796,13 +796,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   swipeTrackDisabled: {
-    backgroundColor: "#F5EFE3",
-    borderColor: "#E8DDD0",
+    backgroundColor: "#DAF1E6",
+    borderColor: "#C6E8D5",
   },
   swipeTrackReady: {
-    backgroundColor: "#C42017",
-    borderColor: "#A51A12",
-    shadowColor: "#C42017",
+    backgroundColor: "#059669",
+    borderColor: "#047857",
+    shadowColor: "#059669",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.25,
     shadowRadius: 14,
@@ -819,7 +819,7 @@ const styles = StyleSheet.create({
   },
   swipeLabel: {
     textAlign: "center",
-    color: "#A8907C",
+    color: "#8FA89A",
     fontSize: 14,
     fontWeight: "600",
     letterSpacing: 0.3,
@@ -841,7 +841,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#2D1410",
+    shadowColor: "#0B2A1E",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
     shadowRadius: 8,
@@ -861,14 +861,14 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     paddingHorizontal: 18,
     borderWidth: 1,
-    borderColor: "#E8DDD0",
+    borderColor: "#C6E8D5",
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     backgroundColor: "#ffffff",
   },
   secondaryButtonText: {
-    color: "#6B4434",
+    color: "#44604F",
     fontSize: 13,
     fontWeight: "600",
     letterSpacing: 0.2,

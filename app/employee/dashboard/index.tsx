@@ -3,7 +3,7 @@ import * as Location from "expo-location";
 import * as Network from "expo-network";
 import { useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 
 import { AmbientTop } from "@/components/ambient-top";
 import { BottomNav } from "@/components/bottom-nav";
@@ -20,7 +20,15 @@ import {
 export default function Dashboard() {
   const router = useRouter();
   const inset = useResponsiveInset(22);
+  const { width } = useWindowDimensions();
   const { employee, selectedBranch, latestLocation, setLatestLocation } = useSession();
+
+  // Hero elements scale with the usable content width so they look right on
+  // everything from small phones to tablets / web.
+  const contentWidth = width - inset * 2;
+  const circleSize = Math.max(168, Math.min(248, contentWidth * 0.62));
+  const innerSize = circleSize - 32;
+  const clockFontSize = Math.max(42, Math.min(62, contentWidth * 0.165));
 
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isCheckedIn, setIsCheckedIn] = useState(false);
@@ -146,6 +154,13 @@ export default function Dashboard() {
     day: "numeric",
     year: "numeric",
   })}`;
+
+  const greetingWord =
+    currentTime.getHours() < 12
+      ? "Good morning"
+      : currentTime.getHours() < 18
+        ? "Good afternoon"
+        : "Good evening";
 
   const totalHoursLabel = useMemo(() => {
     if (!checkInAt || !checkOutAt) return "--:--";
@@ -277,8 +292,8 @@ export default function Dashboard() {
     : isOnBreak
       ? "On Break"
       : isCheckedIn
-        ? "Currently Working"
-        : "Ready to Start";
+        ? "On the Line"
+        : "Ready for Service";
 
   const statusDotColor = isSyncing
     ? "#3B82F6"
@@ -286,7 +301,7 @@ export default function Dashboard() {
       ? "#F59E0B"
       : isCheckedIn
         ? "#16A34A"
-        : "#A8907C";
+        : "#8FA89A";
 
   const employeeName = employee?.fullName ?? "Alfred Cabato";
   const initials = employeeName
@@ -316,7 +331,7 @@ export default function Dashboard() {
 
         <View style={styles.headerRow}>
           <View style={styles.headerLeft}>
-            <Text style={styles.eyebrow}>Welcome back</Text>
+            <Text style={styles.eyebrow}>{greetingWord}, Chef</Text>
             <Text style={styles.greeting}>{employeeName}</Text>
             <View style={styles.statusRow}>
               <View style={[styles.statusDot, { backgroundColor: statusDotColor }]} />
@@ -334,7 +349,7 @@ export default function Dashboard() {
         <View style={styles.clockCard}>
           <View style={styles.clockHeader}>
             <View style={styles.clockHeaderLeft}>
-              <Ionicons name="time-outline" size={13} color="#7A5A48" />
+              <Ionicons name="time-outline" size={13} color="#5A7264" />
               <Text style={styles.clockHeaderText}>Current time</Text>
             </View>
             <View style={styles.branchTag}>
@@ -343,7 +358,7 @@ export default function Dashboard() {
             </View>
           </View>
           <View style={styles.clockRow}>
-            <Text style={styles.clockText}>{timeLabel}</Text>
+            <Text style={[styles.clockText, { fontSize: clockFontSize, lineHeight: clockFontSize * 1.12 }]}>{timeLabel}</Text>
             <Text style={styles.clockSeconds}>:{secondsLabel}</Text>
           </View>
           <Text style={styles.dateText}>{dateLabel}</Text>
@@ -353,12 +368,13 @@ export default function Dashboard() {
         <Pressable
           onPress={onCirclePress}
           disabled={isSyncing}
-          style={[styles.checkAction, isSyncing && styles.checkActionDisabled]}
+          style={[styles.checkAction, { borderRadius: circleSize / 2 }, isSyncing && styles.checkActionDisabled]}
           android_ripple={{ color: "rgba(0,0,0,0.05)", borderless: true }}
         >
           <View
             style={[
               styles.checkOuter,
+              { width: circleSize, height: circleSize, borderRadius: circleSize / 2 },
               circleTheme === "out" && styles.checkOuterOut,
               circleTheme === "break" && styles.checkOuterBreak,
             ]}
@@ -366,6 +382,7 @@ export default function Dashboard() {
             <View
               style={[
                 styles.checkInner,
+                { width: innerSize, height: innerSize, borderRadius: innerSize / 2 },
                 circleTheme === "out" && styles.checkInnerOut,
                 circleTheme === "break" && styles.checkInnerBreak,
               ]}
@@ -383,18 +400,18 @@ export default function Dashboard() {
                 <>
                   <View style={[styles.iconBubble, circleTheme === "out" && styles.iconBubbleOut]}>
                     <MaterialCommunityIcons
-                      name={circleTheme === "out" ? "logout-variant" : "login-variant"}
+                      name={circleTheme === "out" ? "exit-to-app" : "chef-hat"}
                       size={26}
                       color="#ffffff"
                     />
                   </View>
                   <Text style={[styles.checkText, circleTheme === "out" && styles.checkTextOut]}>
-                    {circleTheme === "out" ? "Check Out" : "Check In"}
+                    {circleTheme === "out" ? "End Shift" : "Start Shift"}
                   </Text>
                   {circleTheme === "out" && liveDurationLabel && (
                     <Text style={styles.liveDuration}>{liveDurationLabel}</Text>
                   )}
-                  {circleTheme === "in" && <Text style={styles.tapHint}>Tap to start</Text>}
+                  {circleTheme === "in" && <Text style={styles.tapHint}>Tap to clock in</Text>}
                 </>
               )}
             </View>
@@ -413,29 +430,29 @@ export default function Dashboard() {
         )}
 
         <View style={styles.statsHeader}>
-          <Text style={styles.statsHeaderText}>Today&apos;s Activity</Text>
+          <Text style={styles.statsHeaderText}>Today&apos;s Shift</Text>
         </View>
         <View style={styles.statsRow}>
           <MetricCard
             icon="login-variant"
             value={formatPunchTime(checkInAt)}
-            label="Check In"
+            label="Clock In"
             tint="#16A34A"
             bg="rgba(22, 163, 74, 0.08)"
           />
           <MetricCard
             icon="logout-variant"
             value={formatPunchTime(checkOutAt)}
-            label="Check Out"
-            tint="#C42017"
-            bg="rgba(196, 32, 23, 0.08)"
+            label="Clock Out"
+            tint="#059669"
+            bg="rgba(5, 150, 105, 0.08)"
           />
           <MetricCard
             icon="clock-outline"
             value={totalHoursLabel}
-            label="Total Hrs"
-            tint="#4D2211"
-            bg="rgba(77, 34, 17, 0.08)"
+            label="Hours"
+            tint="#1E3A2C"
+            bg="rgba(30, 58, 44, 0.08)"
           />
         </View>
       </ScrollView>
@@ -472,7 +489,7 @@ function MetricCard({
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#FAFAF7",
+    backgroundColor: "#F2FBF6",
   },
   scroll: {
     flex: 1,
@@ -496,14 +513,14 @@ const styles = StyleSheet.create({
   eyebrow: {
     fontSize: 11,
     fontWeight: "600",
-    color: "#7A5A48",
+    color: "#5A7264",
     letterSpacing: 1.4,
     textTransform: "uppercase",
   },
   greeting: {
     fontSize: 30,
     fontWeight: "700",
-    color: "#2D1410",
+    color: "#0B2A1E",
     letterSpacing: -0.8,
     marginTop: 4,
   },
@@ -520,12 +537,12 @@ const styles = StyleSheet.create({
   },
   statusLabel: {
     fontSize: 13,
-    color: "#7A5A48",
+    color: "#5A7264",
     fontWeight: "500",
   },
   syncMessage: {
     marginTop: 6,
-    color: "#6B4434",
+    color: "#44604F",
     fontSize: 12,
     fontWeight: "600",
   },
@@ -537,10 +554,10 @@ const styles = StyleSheet.create({
     width: 54,
     height: 54,
     borderRadius: 27,
-    backgroundColor: "#2D1410",
+    backgroundColor: "#0B2A1E",
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#2D1410",
+    shadowColor: "#0B2A1E",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
     shadowRadius: 8,
@@ -557,13 +574,13 @@ const styles = StyleSheet.create({
     padding: 20,
     borderRadius: 22,
     backgroundColor: "#ffffff",
-    shadowColor: "#2D1410",
+    shadowColor: "#0B2A1E",
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.05,
     shadowRadius: 18,
     elevation: 3,
     borderWidth: 1,
-    borderColor: "rgba(45, 20, 16, 0.04)",
+    borderColor: "rgba(11, 42, 30, 0.04)",
   },
   clockHeader: {
     flexDirection: "row",
@@ -578,7 +595,7 @@ const styles = StyleSheet.create({
   clockHeaderText: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#7A5A48",
+    color: "#5A7264",
     letterSpacing: 0.3,
   },
   clockRow: {
@@ -590,12 +607,12 @@ const styles = StyleSheet.create({
     fontSize: 52,
     letterSpacing: -2,
     fontWeight: "300",
-    color: "#2D1410",
+    color: "#0B2A1E",
     lineHeight: 58,
   },
   clockSeconds: {
     fontSize: 22,
-    color: "#C42017",
+    color: "#059669",
     fontWeight: "600",
     marginBottom: 9,
     marginLeft: 2,
@@ -603,13 +620,13 @@ const styles = StyleSheet.create({
   dateText: {
     marginTop: 4,
     fontSize: 13,
-    color: "#7A5A48",
+    color: "#5A7264",
     fontWeight: "500",
   },
   locationText: {
     marginTop: 8,
     fontSize: 12,
-    color: "#A8907C",
+    color: "#8FA89A",
     fontWeight: "500",
   },
   branchTag: {
@@ -618,19 +635,19 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 10,
     paddingVertical: 5,
-    backgroundColor: "rgba(196, 32, 23, 0.08)",
+    backgroundColor: "rgba(5, 150, 105, 0.08)",
     borderRadius: 10,
   },
   branchTagDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: "#C42017",
+    backgroundColor: "#059669",
   },
   branchTagText: {
     fontSize: 11,
     fontWeight: "600",
-    color: "#C42017",
+    color: "#059669",
     letterSpacing: 0.2,
   },
   checkAction: {
@@ -645,11 +662,11 @@ const styles = StyleSheet.create({
     width: 220,
     height: 220,
     borderRadius: 110,
-    backgroundColor: "rgba(168, 144, 124, 0.15)",
+    backgroundColor: "rgba(143, 168, 154, 0.15)",
     justifyContent: "center",
     alignItems: "center",
   },
-  checkOuterOut: { backgroundColor: "rgba(196, 32, 23, 0.12)" },
+  checkOuterOut: { backgroundColor: "rgba(5, 150, 105, 0.12)" },
   checkOuterBreak: { backgroundColor: "rgba(245, 158, 11, 0.15)" },
   checkInner: {
     width: 188,
@@ -659,13 +676,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     gap: 6,
-    shadowColor: "#2D1410",
+    shadowColor: "#0B2A1E",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.08,
     shadowRadius: 20,
     elevation: 6,
     borderWidth: 1,
-    borderColor: "rgba(45, 20, 16, 0.04)",
+    borderColor: "rgba(11, 42, 30, 0.04)",
   },
   checkInnerOut: {
     backgroundColor: "#ffffff",
@@ -687,28 +704,28 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   iconBubbleOut: {
-    backgroundColor: "#C42017",
-    shadowColor: "#C42017",
+    backgroundColor: "#059669",
+    shadowColor: "#059669",
   },
   checkText: {
     fontSize: 20,
-    color: "#2D1410",
+    color: "#0B2A1E",
     fontWeight: "700",
     letterSpacing: -0.4,
     marginTop: 4,
   },
-  checkTextOut: { color: "#C42017" },
+  checkTextOut: { color: "#059669" },
   tapHint: {
     fontSize: 10,
     fontWeight: "600",
-    color: "#A8907C",
+    color: "#8FA89A",
     letterSpacing: 1.5,
     textTransform: "uppercase",
   },
   liveDuration: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#C42017",
+    color: "#059669",
     letterSpacing: 0.5,
     fontVariant: ["tabular-nums"],
   },
@@ -732,7 +749,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 5,
     borderRadius: 12,
-    backgroundColor: "#F59E0B",
+    backgroundColor: "#059669",
   },
   endBreakText: {
     fontSize: 11,
@@ -766,7 +783,7 @@ const styles = StyleSheet.create({
   statsHeaderText: {
     fontSize: 11,
     fontWeight: "700",
-    color: "#7A5A48",
+    color: "#5A7264",
     letterSpacing: 1.4,
     textTransform: "uppercase",
   },
@@ -781,13 +798,13 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
     padding: 14,
     borderRadius: 16,
-    shadowColor: "#2D1410",
+    shadowColor: "#0B2A1E",
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.04,
     shadowRadius: 10,
     elevation: 2,
     borderWidth: 1,
-    borderColor: "rgba(45, 20, 16, 0.04)",
+    borderColor: "rgba(11, 42, 30, 0.04)",
     gap: 10,
   },
   metricIconWrap: {
@@ -800,14 +817,14 @@ const styles = StyleSheet.create({
   metricValue: {
     fontSize: 15,
     fontWeight: "700",
-    color: "#2D1410",
+    color: "#0B2A1E",
     letterSpacing: -0.2,
     fontVariant: ["tabular-nums"],
   },
   metricLabel: {
     marginTop: -6,
     fontSize: 10,
-    color: "#A8907C",
+    color: "#8FA89A",
     fontWeight: "600",
     textTransform: "uppercase",
     letterSpacing: 0.6,

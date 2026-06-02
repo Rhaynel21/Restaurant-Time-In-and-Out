@@ -14,7 +14,7 @@ import {
 } from "react-native";
 
 import { AmbientTop } from "@/components/ambient-top";
-import { KopiklockMark } from "@/components/kopiklock-mark";
+import { KitchenMark } from "@/components/kitchen-mark";
 import { useSession } from "@/contexts/session-context";
 import { useResponsiveInset } from "@/hooks/use-responsive";
 import { OFFLINE_LOGIN_CACHE_MISS, ensureEmployeeProfile } from "@/lib/attendance";
@@ -66,17 +66,17 @@ export default function LoginScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.brandWrap}>
-          <KopiklockMark size={104} />
+          <KitchenMark size={104} />
           <View style={styles.wordmarkWrap}>
-            <Text style={styles.wordmark}>KOPIKLOCK</Text>
-            <Text style={styles.tagline}>Workforce Attendance</Text>
+            <Text style={styles.wordmark}>THYME IN</Text>
+            <Text style={styles.tagline}>Kitchen Crew Time Clock</Text>
           </View>
         </View>
 
         <View style={styles.card}>
           <Text style={styles.welcomeTitle}>Welcome back</Text>
           <Text style={styles.welcomeSubtitle}>
-            Sign in to your account to continue.
+            Sign in to start your shift.
           </Text>
 
           <View style={styles.inputGroup}>
@@ -90,14 +90,14 @@ export default function LoginScreen() {
               <Ionicons
                 name="person-outline"
                 size={18}
-                color={focusedField === "id" ? "#C42017" : "#A8907C"}
+                color={focusedField === "id" ? "#059669" : "#8FA89A"}
               />
               <TextInput
                 style={styles.input}
                 value={employeeId}
                 onChangeText={setEmployeeId}
                 placeholder="e.g. EMP-1027"
-                placeholderTextColor="#C9B7A2"
+                placeholderTextColor="#B0C8B8"
                 autoCapitalize="characters"
                 onFocus={() => setFocusedField("id")}
                 onBlur={() => setFocusedField(null)}
@@ -116,14 +116,14 @@ export default function LoginScreen() {
               <Ionicons
                 name="lock-closed-outline"
                 size={18}
-                color={focusedField === "password" ? "#C42017" : "#A8907C"}
+                color={focusedField === "password" ? "#059669" : "#8FA89A"}
               />
               <TextInput
                 style={styles.input}
                 value={password}
                 onChangeText={setPassword}
                 placeholder="Enter your password"
-                placeholderTextColor="#C9B7A2"
+                placeholderTextColor="#B0C8B8"
                 secureTextEntry={!showPassword}
                 onFocus={() => setFocusedField("password")}
                 onBlur={() => setFocusedField(null)}
@@ -135,7 +135,7 @@ export default function LoginScreen() {
                 <Ionicons
                   name={showPassword ? "eye-outline" : "eye-off-outline"}
                   size={19}
-                  color="#A8907C"
+                  color="#8FA89A"
                 />
               </Pressable>
             </View>
@@ -181,7 +181,7 @@ export default function LoginScreen() {
 
         <View style={styles.footerWrap}>
           <Text style={styles.footerText}>
-            © 2026 Kopiklock · v1.0.0
+            © 2026 Thyme In · v1.0.0
           </Text>
         </View>
       </ScrollView>
@@ -192,7 +192,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#FAFAF7",
+    backgroundColor: "#F2FBF6",
   },
   scrollContent: {
     flexGrow: 1,
@@ -211,11 +211,11 @@ const styles = StyleSheet.create({
   wordmark: {
     fontSize: 28,
     fontWeight: "800",
-    color: "#C42017",
+    color: "#059669",
     letterSpacing: 2,
   },
   tagline: {
-    color: "#6B4434",
+    color: "#44604F",
     fontSize: 12,
     textTransform: "uppercase",
     letterSpacing: 3,
@@ -225,24 +225,24 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
     borderRadius: 24,
     padding: 28,
-    shadowColor: "#2D1410",
+    shadowColor: "#0B2A1E",
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.06,
     shadowRadius: 28,
     elevation: 6,
     borderWidth: 1,
-    borderColor: "rgba(45, 20, 16, 0.04)",
+    borderColor: "rgba(11, 42, 30, 0.04)",
   },
   welcomeTitle: {
     fontSize: 26,
     fontWeight: "700",
-    color: "#2D1410",
+    color: "#0B2A1E",
     letterSpacing: -0.6,
   },
   welcomeSubtitle: {
     marginTop: 6,
     marginBottom: 24,
-    color: "#7A5A48",
+    color: "#5A7264",
     fontSize: 14,
     lineHeight: 20,
   },
@@ -253,15 +253,15 @@ const styles = StyleSheet.create({
   fieldLabel: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#4D2211",
+    color: "#1E3A2C",
     letterSpacing: 0.2,
   },
   inputWrap: {
     height: 52,
     borderRadius: 12,
-    backgroundColor: "#FBF7EE",
+    backgroundColor: "#E7F7EF",
     borderWidth: 1,
-    borderColor: "#E8DDD0",
+    borderColor: "#C6E8D5",
     paddingHorizontal: 14,
     flexDirection: "row",
     alignItems: "center",
@@ -269,8 +269,8 @@ const styles = StyleSheet.create({
   },
   inputWrapFocused: {
     backgroundColor: "#ffffff",
-    borderColor: "#C42017",
-    shadowColor: "#C42017",
+    borderColor: "#059669",
+    shadowColor: "#059669",
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.1,
     shadowRadius: 6,
@@ -279,7 +279,7 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     height: "100%",
-    color: "#2D1410",
+    color: "#0B2A1E",
     fontSize: 15,
     fontWeight: "500",
   },
@@ -300,34 +300,34 @@ const styles = StyleSheet.create({
     height: 18,
     borderRadius: 5,
     borderWidth: 1.5,
-    borderColor: "#C9B7A2",
+    borderColor: "#B0C8B8",
     backgroundColor: "#ffffff",
     alignItems: "center",
     justifyContent: "center",
   },
   checkboxOn: {
-    borderColor: "#C42017",
-    backgroundColor: "#C42017",
+    borderColor: "#059669",
+    backgroundColor: "#059669",
   },
   rememberText: {
     fontSize: 13,
-    color: "#6B4434",
+    color: "#44604F",
     fontWeight: "500",
   },
   forgotText: {
     fontSize: 13,
-    color: "#C42017",
+    color: "#059669",
     fontWeight: "600",
   },
   signInBtn: {
     height: 54,
     borderRadius: 14,
-    backgroundColor: "#C42017",
+    backgroundColor: "#059669",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    shadowColor: "#C42017",
+    shadowColor: "#059669",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.25,
     shadowRadius: 16,
@@ -355,7 +355,7 @@ const styles = StyleSheet.create({
   },
   footerText: {
     textAlign: "center",
-    color: "#A8907C",
+    color: "#8FA89A",
     fontSize: 11,
     fontWeight: "500",
     letterSpacing: 0.3,
