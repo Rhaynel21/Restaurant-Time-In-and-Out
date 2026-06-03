@@ -237,7 +237,7 @@ export default function HistoryScreen() {
                   onPress={() => setSelectedDate(prev => prev === cell ? null : cell)}
                   activeOpacity={0.7}
                 >
-                  <Text style={[styles.calDate, isSelected && styles.calDateSelected]}>
+                  <Text style={[styles.calDate, isSelected && status && styles.calDateSelected]}>
                     {cell}
                   </Text>
                   {status && !isSelected && (
@@ -523,10 +523,14 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   dot: {
+    // Absolutely positioned at the bottom so the date number stays vertically
+    // centered whether or not the dot is shown — toggling selection (which hides
+    // the dot) no longer makes the number jump/shift.
+    position: "absolute",
+    bottom: 5,
     width: 5,
     height: 5,
     borderRadius: 3,
-    marginTop: 2,
   },
   legend: {
     flexDirection: "row",
