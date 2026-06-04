@@ -2,7 +2,7 @@
 import * as Location from "expo-location";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Animated, PanResponder, Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, PanResponder, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { AmbientTop } from "@/components/ambient-top";
 import { KitchenMark } from "@/components/kitchen-mark";
@@ -167,25 +167,30 @@ export default function SelectBranch() {
           setIsLocating(false);
         }
 
-        locationWatcherRef.current = await Location.watchPositionAsync(
-          {
-            accuracy: Location.Accuracy.Balanced,
-            distanceInterval: 15,
-            timeInterval: 10000,
-          },
-          (position) => {
-            const nextLocation: LocationPoint = {
-              lat: position.coords.latitude,
-              lng: position.coords.longitude,
-              accuracyMeters: position.coords.accuracy,
-            };
-            setUserLocation(nextLocation);
-            setDetectedBranch((currentBranch) => {
-              if (hasConfirmedBranchRef.current && currentBranch) return currentBranch;
-              return findNearestBranch(nextLocation);
-            });
-          },
-        );
+        // Skip the live location watcher on web: expo-location's web build calls
+        // the removed `LocationEventEmitter.removeSubscription` on cleanup, which
+        // throws on unmount. The one-shot reading above is enough for web.
+        if (Platform.OS !== "web") {
+          locationWatcherRef.current = await Location.watchPositionAsync(
+            {
+              accuracy: Location.Accuracy.Balanced,
+              distanceInterval: 15,
+              timeInterval: 10000,
+            },
+            (position) => {
+              const nextLocation: LocationPoint = {
+                lat: position.coords.latitude,
+                lng: position.coords.longitude,
+                accuracyMeters: position.coords.accuracy,
+              };
+              setUserLocation(nextLocation);
+              setDetectedBranch((currentBranch) => {
+                if (hasConfirmedBranchRef.current && currentBranch) return currentBranch;
+                return findNearestBranch(nextLocation);
+              });
+            },
+          );
+        }
       } catch (error) {
         console.error(error);
         const nearest = findNearestBranch(FALLBACK_LOCATION);

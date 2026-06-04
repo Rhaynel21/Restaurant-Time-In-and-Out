@@ -237,12 +237,17 @@ export default function HistoryScreen() {
                   onPress={() => setSelectedDate(prev => prev === cell ? null : cell)}
                   activeOpacity={0.7}
                 >
+                  {/* Top spacer mirrors the dot slot below so the number stays
+                      vertically centered in the cell (and in the selected box). */}
+                  <View style={styles.dotSlot} />
                   <Text style={[styles.calDate, isSelected && status && styles.calDateSelected]}>
                     {cell}
                   </Text>
-                  {status && !isSelected && (
-                    <View style={[styles.dot, { backgroundColor: statusColor(status) }]} />
-                  )}
+                  <View style={styles.dotSlot}>
+                    {status && !isSelected ? (
+                      <View style={[styles.dot, { backgroundColor: statusColor(status) }]} />
+                    ) : null}
+                  </View>
                 </TouchableOpacity>
               );
             })}
@@ -522,12 +527,16 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontWeight: "700",
   },
+  dotSlot: {
+    // Fixed-height slot above and below the number. Reserving this space (rather
+    // than absolutely positioning the dot) keeps the number centered and the dot
+    // from overlapping it, and stops the number from jumping when selection hides
+    // the dot.
+    height: 9,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   dot: {
-    // Absolutely positioned at the bottom so the date number stays vertically
-    // centered whether or not the dot is shown — toggling selection (which hides
-    // the dot) no longer makes the number jump/shift.
-    position: "absolute",
-    bottom: 5,
     width: 5,
     height: 5,
     borderRadius: 3,

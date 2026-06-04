@@ -3,7 +3,7 @@ import * as Location from "expo-location";
 import * as Network from "expo-network";
 import { useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 
 import { AmbientTop } from "@/components/ambient-top";
 import { BottomNav } from "@/components/bottom-nav";
@@ -112,6 +112,11 @@ export default function Dashboard() {
     const watchLocation = async () => {
       const permission = await Location.requestForegroundPermissionsAsync();
       if (permission.status !== "granted") return;
+
+      // expo-location's web build crashes on subscription cleanup (it calls the
+      // removed `LocationEventEmitter.removeSubscription`), so skip the live
+      // watcher on web.
+      if (Platform.OS === "web") return;
 
       watcher = await Location.watchPositionAsync(
         {
