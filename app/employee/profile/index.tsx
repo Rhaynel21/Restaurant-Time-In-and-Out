@@ -6,18 +6,18 @@ import { BottomNav } from "@/components/bottom-nav";
 import { BrandTitle } from "@/components/brand-title";
 import { useSession } from "@/contexts/session-context";
 import { clearLocalSession } from "@/lib/attendance";
+import { signOutUser } from "@/lib/auth";
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { employee, selectedBranch, setEmployee, setSelectedBranch, setLatestLocation } =
-    useSession();
+  const { employee, setEmployee } = useSession();
 
   const user = {
     name: employee?.fullName ?? "Alfred Cabato",
     phone: employee?.phone ?? "+63 917 555 0101",
     email: employee?.email ?? "alfred.cabato@thymein.local",
     role: employee?.role ?? "Line Cook",
-    branch: selectedBranch?.name ?? employee?.branchName ?? "Thyme In - BGC",
+    branch: employee?.branchName ?? "Thyme In - BGC",
     employeeId: employee?.employeeId ?? "EMP-0001",
   };
 
@@ -86,10 +86,9 @@ export default function ProfileScreen() {
             label="Log Out"
             danger
             onPress={() => {
+              signOutUser().catch(() => null);
               clearLocalSession().catch(() => null);
               setEmployee(null);
-              setSelectedBranch(null);
-              setLatestLocation(null);
               router.replace("/(auth)");
             }}
           />

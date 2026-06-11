@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Colors } from "@/constants/theme";
 import { useResponsiveInset } from "@/hooks/use-responsive";
 
-export type TabKey = "home" | "history" | "profile";
+export type TabKey = "home" | "history" | "leave" | "profile";
 
 type IoniconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -31,6 +31,13 @@ const TABS: Tab[] = [
     icon: "calendar-outline",
     activeIcon: "calendar",
     href: "/employee/history",
+  },
+  {
+    key: "leave",
+    label: "Leave",
+    icon: "airplane-outline",
+    activeIcon: "airplane",
+    href: "/employee/leave",
   },
   {
     key: "profile",

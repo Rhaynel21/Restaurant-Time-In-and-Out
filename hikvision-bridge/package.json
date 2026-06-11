@@ -1,0 +1,16 @@
+{
+  "name": "hikvision-bridge",
+  "version": "1.0.0",
+  "description": "Polls a Hikvision access-control device (ISAPI) and mirrors clock in/out events into the Thyme In Firestore attendance collection.",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js",
+    "test:connect": "node src/test-connect.js",
+    "seed": "node seed-accounts.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "firebase-admin": "^12.7.0"
+  }
+}

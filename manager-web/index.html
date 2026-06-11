@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Thyme In · Manager Portal</title>
+    <style>
+      :root {
+        --primary: #059669;
+        --primary-dark: #047857;
+        --bg: #f2fbf6;
+        --card: #ffffff;
+        --warm: #e7f7ef;
+        --warm-alt: #daf1e6;
+        --border: #c6e8d5;
+        --hairline: rgba(11, 42, 30, 0.06);
+        --text: #0b2a1e;
+        --muted: #5a7264;
+        --faint: #8fa89a;
+        --danger: #dc2626;
+        --warn-bg: #fffbeb;
+        --warn: #92400e;
+        --success: #16a34a;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      .hidden { display: none !important; }
+
+      /* Login */
+      .login-wrap {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+      }
+      .login-card {
+        width: 100%;
+        max-width: 400px;
+        background: var(--card);
+        border-radius: 22px;
+        padding: 34px 30px;
+        box-shadow: 0 18px 50px rgba(11, 42, 30, 0.1);
+        border: 1px solid var(--hairline);
+      }
+      .brand { text-align: center; margin-bottom: 22px; }
+      .brand .logo {
+        width: 60px; height: 60px; border-radius: 18px;
+        background: var(--primary); color: #fff;
+        display: inline-flex; align-items: center; justify-content: center;
+        font-size: 28px; margin-bottom: 12px;
+      }
+      .brand h1 { margin: 0; font-size: 22px; letter-spacing: 1px; }
+      .brand p { margin: 4px 0 0; color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 2px; }
+      label { display: block; font-size: 12px; font-weight: 600; margin: 14px 0 6px; color: #1e3a2c; }
+      input {
+        width: 100%; height: 48px; border-radius: 12px;
+        border: 1px solid var(--border); background: var(--warm);
+        padding: 0 14px; font-size: 15px; color: var(--text); outline: none;
+      }
+      input:focus { border-color: var(--primary); background: #fff; }
+      button.primary {
+        width: 100%; height: 50px; margin-top: 22px;
+        background: var(--primary); color: #fff; border: none; border-radius: 13px;
+        font-size: 15px; font-weight: 700; cursor: pointer;
+      }
+      button.primary:hover { background: var(--primary-dark); }
+      button.primary:disabled { opacity: 0.6; cursor: default; }
+      .error { color: var(--danger); font-size: 13px; margin-top: 12px; text-align: center; font-weight: 600; }
+
+      /* App shell */
+      header.bar {
+        background: #0a3326; color: #ecfdf5;
+        padding: 16px 24px; display: flex; align-items: center; justify-content: space-between;
+        position: sticky; top: 0; z-index: 5;
+      }
+      header.bar .who { display: flex; align-items: center; gap: 12px; }
+      header.bar .avatar {
+        width: 38px; height: 38px; border-radius: 50%; background: var(--primary);
+        display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px;
+      }
+      header.bar .name { font-weight: 700; font-size: 15px; }
+      header.bar .role { font-size: 12px; color: #b6e3cd; }
+      header.bar button.logout {
+        background: rgba(255,255,255,0.12); color: #ecfdf5; border: 1px solid rgba(255,255,255,0.2);
+        border-radius: 10px; padding: 8px 14px; cursor: pointer; font-size: 13px; font-weight: 600;
+      }
+      .container { max-width: 920px; margin: 0 auto; padding: 22px 24px 60px; }
+      .tabs { display: flex; gap: 8px; background: var(--warm); padding: 5px; border-radius: 14px; margin-bottom: 22px; }
+      .tabs button {
+        flex: 1; border: none; background: transparent; padding: 11px; border-radius: 10px;
+        font-size: 14px; font-weight: 600; color: var(--muted); cursor: pointer;
+      }
+      .tabs button.active { background: #fff; color: var(--text); box-shadow: 0 2px 6px rgba(11,42,30,0.06); }
+      .tabs .count { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 6px;
+        background: var(--danger); color: #fff; border-radius: 9px; font-size: 11px; line-height: 18px; }
+
+      h2.section { font-size: 13px; text-transform: uppercase; letter-spacing: 1.4px; color: var(--muted); margin: 0 0 14px; }
+      .card {
+        background: var(--card); border: 1px solid var(--hairline); border-radius: 16px;
+        padding: 16px; margin-bottom: 12px;
+      }
+      .row { display: flex; align-items: center; gap: 14px; }
+      .leave-icon {
+        width: 46px; height: 46px; border-radius: 12px; display: flex; align-items: center; justify-content: center;
+        font-size: 22px; background: var(--warm-alt);
+      }
+      .grow { flex: 1; min-width: 0; }
+      .title { font-weight: 700; font-size: 15px; }
+      .sub { color: var(--faint); font-size: 13px; margin-top: 2px; }
+      .badge { padding: 5px 11px; border-radius: 10px; font-size: 12px; font-weight: 700; }
+      .badge.pending { background: var(--warn-bg); color: var(--warn); }
+      .badge.approved { background: rgba(22,163,74,0.1); color: var(--success); }
+      .badge.rejected { background: rgba(220,38,38,0.08); color: var(--danger); }
+      .badge.in { background: rgba(22,163,74,0.1); color: var(--success); }
+      .badge.out { background: var(--warm-alt); color: var(--primary-dark); }
+      .reason { margin-top: 12px; color: var(--muted); font-size: 14px; line-height: 1.4; }
+      .actions { display: flex; gap: 10px; margin-top: 14px; }
+      .actions button { flex: 1; height: 42px; border-radius: 11px; font-size: 14px; font-weight: 700; cursor: pointer; border: none; }
+      .btn-approve { background: var(--primary); color: #fff; }
+      .btn-approve:hover { background: var(--primary-dark); }
+      .btn-reject { background: rgba(220,38,38,0.08); color: var(--danger); border: 1px solid rgba(220,38,38,0.2) !important; }
+      .empty { text-align: center; color: var(--faint); padding: 50px 0; font-size: 15px; }
+      table { width: 100%; border-collapse: collapse; }
+      .att-card { padding: 0; overflow: hidden; }
+      th, td { text-align: left; padding: 13px 16px; font-size: 14px; border-bottom: 1px solid var(--hairline); }
+      th { background: var(--warm); color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+      tr:last-child td { border-bottom: none; }
+      .muted-note { color: var(--faint); font-size: 12px; margin-top: 16px; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <!-- LOGIN -->
+    <div id="login" class="login-wrap">
+      <div class="login-card">
+        <div class="brand">
+          <div class="logo">🍃</div>
+          <h1>THYME IN</h1>
+          <p>Manager Portal</p>
+        </div>
+        <label for="identifier">Employee ID or Email</label>
+        <input id="identifier" placeholder="e.g. MGR-001 or manager@thymein.local" autocomplete="username" />
+        <label for="password">Password</label>
+        <input id="password" type="password" placeholder="Your password" autocomplete="current-password" />
+        <button class="primary" id="loginBtn">Sign In</button>
+        <div class="error hidden" id="loginError"></div>
+        <div class="muted-note">Managers only. Staff use the mobile app.</div>
+      </div>
+    </div>
+
+    <!-- APP -->
+    <div id="app" class="hidden">
+      <header class="bar">
+        <div class="who">
+          <div class="avatar" id="avatar">M</div>
+          <div>
+            <div class="name" id="whoName">Manager</div>
+            <div class="role" id="whoRole">Manager · Thyme In</div>
+          </div>
+        </div>
+        <button class="logout" id="logoutBtn">Log out</button>
+      </header>
+      <div class="container">
+        <div class="tabs">
+          <button id="tabApprovals" class="active" data-tab="approvals">
+            Approvals<span class="count hidden" id="pendingCount">0</span>
+          </button>
+          <button id="tabAttendance" data-tab="attendance">Attendance Today</button>
+          <button id="tabAll" data-tab="all">All Leaves</button>
+        </div>
+
+        <div id="view-approvals">
+          <h2 class="section">Pending Leave Requests</h2>
+          <div id="approvalsList"></div>
+        </div>
+
+        <div id="view-attendance" class="hidden">
+          <h2 class="section">Today's Attendance</h2>
+          <div class="card att-card">
+            <table>
+              <thead>
+                <tr><th>Employee</th><th>Branch</th><th>Clock In</th><th>Clock Out</th><th>Status</th></tr>
+              </thead>
+              <tbody id="attBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="view-all" class="hidden">
+          <h2 class="section">All Leave Requests</h2>
+          <div id="allList"></div>
+        </div>
+
+        <div class="muted-note">
+          Real-time · Firestore project <strong>kitchen-in-and-out</strong>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      import { initializeApp } from "https://esm.sh/firebase@12/app";
+      import {
+        getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut,
+        setPersistence, browserLocalPersistence,
+      } from "https://esm.sh/firebase@12/auth";
+      import {
+        getFirestore, collection, query, where, onSnapshot, doc, getDoc, getDocs,
+        updateDoc, limit, serverTimestamp,
+      } from "https://esm.sh/firebase@12/firestore";
+
+      // Same public config as the mobile app — access is governed by Firestore rules.
+      const firebaseConfig = {
+        apiKey: "AIzaSyD-cISjvsFXBmtdOAan1o4EMNp456F9F2c",
+        authDomain: "kitchen-in-and-out.firebaseapp.com",
+        projectId: "kitchen-in-and-out",
+        storageBucket: "kitchen-in-and-out.firebasestorage.app",
+        messagingSenderId: "644399021106",
+        appId: "1:644399021106:web:8f8f00a34d7eef7a17d02b",
+      };
+      const fbApp = initializeApp(firebaseConfig);
+      const db = getFirestore(fbApp);
+      const auth = getAuth(fbApp);
+
+      const LEAVE_ICON = { vacation: "🏖️", sick: "🩺", emergency: "🚨", unpaid: "💸" };
+      const LEAVE_LABEL = { vacation: "Vacation", sick: "Sick", emergency: "Emergency", unpaid: "Unpaid" };
+
+      const $ = (id) => document.getElementById(id);
+
+      // Resolve an Employee ID to its email (Firebase Auth signs in by email).
+      async function resolveEmail(identifier) {
+        const id = identifier.trim();
+        if (id.includes("@")) return id.toLowerCase();
+        const s = await getDoc(doc(db, "employees", id.toUpperCase()));
+        if (!s.exists() || !s.data().email) throw new Error("No account found for that ID.");
+        return s.data().email.toLowerCase();
+      }
+
+      // Load the employees profile doc for a signed-in user (by email).
+      async function loadProfile(user) {
+        const email = (user.email || "").toLowerCase();
+        const snap = await getDocs(
+          query(collection(db, "employees"), where("email", "==", email), limit(1)),
+        );
+        if (snap.empty) return null;
+        const d = snap.docs[0];
+        const data = d.data();
+        return {
+          employeeId: d.id,
+          fullName: data.fullName || d.id,
+          role: data.role || "Manager",
+          accessRole: data.accessRole || "staff",
+        };
+      }
+
+      // ── Auth ──
+      let me = null;
+      let unsubs = [];
+
+      async function doLogin() {
+        const identifier = $("identifier").value;
+        const password = $("password").value;
+        const btn = $("loginBtn");
+        const err = $("loginError");
+        err.classList.add("hidden");
+        if (!identifier || !password) {
+          err.textContent = "Enter your ID/email and password.";
+          err.classList.remove("hidden");
+          return;
+        }
+        btn.disabled = true;
+        btn.textContent = "Signing in...";
+        try {
+          await setPersistence(auth, browserLocalPersistence);
+          const email = await resolveEmail(identifier);
+          await signInWithEmailAndPassword(auth, email, password);
+          // onAuthStateChanged handles role check + entering the app.
+        } catch (e) {
+          const code = e.code || "";
+          err.textContent =
+            code === "auth/wrong-password" || code === "auth/invalid-credential"
+              ? "Incorrect password."
+              : code === "auth/user-not-found" || code === "auth/invalid-email"
+                ? "No account found for that ID/email."
+                : code === "auth/network-request-failed"
+                  ? "Network error. Check your connection."
+                  : e.message || "Unable to sign in.";
+          err.classList.remove("hidden");
+          btn.disabled = false;
+          btn.textContent = "Sign In";
+        }
+      }
+
+      function logout() {
+        unsubs.forEach((u) => u && u());
+        unsubs = [];
+        me = null;
+        signOut(auth);
+        $("app").classList.add("hidden");
+        $("login").classList.remove("hidden");
+        $("password").value = "";
+      }
+
+      function initials(name) {
+        return name.split(" ").slice(0, 2).map((p) => p[0]).join("").toUpperCase();
+      }
+
+      function fmtDate(ymd) {
+        if (!ymd) return "";
+        const [y, m, d] = ymd.split("-").map(Number);
+        return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+      }
+      function fmtRange(s, e) {
+        return s === e ? fmtDate(s) : `${fmtDate(s)} – ${fmtDate(e)}`;
+      }
+      function tsToDate(ts) {
+        if (!ts) return null;
+        if (typeof ts.toDate === "function") return ts.toDate();
+        if (ts.seconds != null) return new Date(ts.seconds * 1000);
+        return null;
+      }
+      function fmtTime(date) {
+        return date ? date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "—";
+      }
+
+      // ── Real-time views ──
+      function watchApprovals() {
+        const q = query(collection(db, "leaves"), where("status", "==", "pending"), limit(200));
+        return onSnapshot(q, (snap) => {
+          const items = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          items.sort((a, b) => (tsToDate(a.createdAt)?.getTime() || 0) - (tsToDate(b.createdAt)?.getTime() || 0));
+          const count = items.length;
+          const badge = $("pendingCount");
+          badge.textContent = count;
+          badge.classList.toggle("hidden", count === 0);
+          renderApprovals(items);
+        });
+      }
+
+      function renderApprovals(items) {
+        const root = $("approvalsList");
+        if (!items.length) {
+          root.innerHTML = `<div class="empty">✅ No pending requests</div>`;
+          return;
+        }
+        root.innerHTML = items
+          .map(
+            (l) => `
+          <div class="card" data-id="${l.id}">
+            <div class="row">
+              <div class="leave-icon">${LEAVE_ICON[l.type] || "📝"}</div>
+              <div class="grow">
+                <div class="title">${escapeHtml(l.employeeName || "Employee")}</div>
+                <div class="sub">${LEAVE_LABEL[l.type] || "Leave"} · ${fmtRange(l.startDate, l.endDate)} · ${l.days} day${l.days > 1 ? "s" : ""}</div>
+              </div>
+              <span class="badge pending">Pending</span>
+            </div>
+            ${l.reason ? `<div class="reason">${escapeHtml(l.reason)}</div>` : ""}
+            <div class="actions">
+              <button class="btn-reject" data-act="reject" data-id="${l.id}">Reject</button>
+              <button class="btn-approve" data-act="approve" data-id="${l.id}">Approve</button>
+            </div>
+          </div>`,
+          )
+          .join("");
+      }
+
+      function watchAllLeaves() {
+        const q = query(collection(db, "leaves"), limit(300));
+        return onSnapshot(q, (snap) => {
+          const items = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          items.sort((a, b) => (tsToDate(b.createdAt)?.getTime() || 0) - (tsToDate(a.createdAt)?.getTime() || 0));
+          const root = $("allList");
+          if (!items.length) {
+            root.innerHTML = `<div class="empty">No leave requests yet</div>`;
+            return;
+          }
+          root.innerHTML = items
+            .map(
+              (l) => `
+            <div class="card">
+              <div class="row">
+                <div class="leave-icon">${LEAVE_ICON[l.type] || "📝"}</div>
+                <div class="grow">
+                  <div class="title">${escapeHtml(l.employeeName || "Employee")}</div>
+                  <div class="sub">${LEAVE_LABEL[l.type] || "Leave"} · ${fmtRange(l.startDate, l.endDate)} · ${l.days} day${l.days > 1 ? "s" : ""}</div>
+                </div>
+                <span class="badge ${l.status}">${l.status[0].toUpperCase() + l.status.slice(1)}</span>
+              </div>
+              ${l.reason ? `<div class="reason">${escapeHtml(l.reason)}</div>` : ""}
+              ${l.reviewedBy ? `<div class="sub" style="margin-top:8px">${l.status === "approved" ? "Approved" : "Rejected"} by ${escapeHtml(l.reviewedBy)}</div>` : ""}
+            </div>`,
+            )
+            .join("");
+        });
+      }
+
+      function watchAttendance() {
+        const start = new Date();
+        start.setHours(0, 0, 0, 0);
+        const q = query(collection(db, "attendance"), limit(400));
+        return onSnapshot(q, (snap) => {
+          const rows = snap.docs
+            .map((d) => d.data())
+            .map((r) => ({ ...r, _in: tsToDate(r.checkInAt) }))
+            .filter((r) => r._in && r._in.getTime() >= start.getTime())
+            .sort((a, b) => b._in.getTime() - a._in.getTime());
+          const body = $("attBody");
+          if (!rows.length) {
+            body.innerHTML = `<tr><td colspan="5" class="empty" style="padding:40px 0">No clock-ins yet today</td></tr>`;
+            return;
+          }
+          body.innerHTML = rows
+            .map((r) => {
+              const out = tsToDate(r.checkOutAt);
+              const onShift = !out;
+              return `<tr>
+                <td>${escapeHtml(r.employeeName || "Employee")}</td>
+                <td>${escapeHtml(r.branchName || "—")}</td>
+                <td>${fmtTime(r._in)}</td>
+                <td>${fmtTime(out)}</td>
+                <td><span class="badge ${onShift ? "in" : "out"}">${onShift ? "On shift" : "Done"}</span></td>
+              </tr>`;
+            })
+            .join("");
+        });
+      }
+
+      async function decide(leaveId, decision) {
+        try {
+          await updateDoc(doc(db, "leaves", leaveId), {
+            status: decision,
+            reviewedBy: me.fullName,
+            reviewNote: null,
+            updatedAt: serverTimestamp(),
+          });
+        } catch (e) {
+          alert("Failed to update: " + e.message);
+        }
+      }
+
+      function escapeHtml(str) {
+        return String(str).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+      }
+
+      // ── Tabs ──
+      function switchTab(tab) {
+        ["approvals", "attendance", "all"].forEach((t) => {
+          $("view-" + t).classList.toggle("hidden", t !== tab);
+        });
+        document.querySelectorAll(".tabs button").forEach((b) => {
+          b.classList.toggle("active", b.dataset.tab === tab);
+        });
+      }
+
+      function enterApp() {
+        $("login").classList.add("hidden");
+        $("app").classList.remove("hidden");
+        $("avatar").textContent = initials(me.fullName);
+        $("whoName").textContent = me.fullName;
+        $("whoRole").textContent = `${me.role} · ${me.accessRole}`;
+        unsubs.push(watchApprovals(), watchAttendance(), watchAllLeaves());
+        switchTab("approvals");
+      }
+
+      // ── Wire up ──
+      $("loginBtn").addEventListener("click", doLogin);
+      $("password").addEventListener("keydown", (e) => e.key === "Enter" && doLogin());
+      $("logoutBtn").addEventListener("click", logout);
+      document.querySelectorAll(".tabs button").forEach((b) =>
+        b.addEventListener("click", () => switchTab(b.dataset.tab)),
+      );
+      document.addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-act]");
+        if (!btn) return;
+        decide(btn.dataset.id, btn.dataset.act === "approve" ? "approved" : "rejected");
+      });
+
+      // React to auth state: gate managers/admins in, bounce everyone else.
+      onAuthStateChanged(auth, async (user) => {
+        if (!user) {
+          if (me) logout();
+          return;
+        }
+        try {
+          const profile = await loadProfile(user);
+          if (profile && (profile.accessRole === "manager" || profile.accessRole === "admin")) {
+            me = profile;
+            enterApp();
+          } else {
+            const err = $("loginError");
+            err.textContent = "This portal is for managers only.";
+            err.classList.remove("hidden");
+            await signOut(auth);
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,5 @@
+node_modules/
+.env
+serviceAccountKey.json
+state.json
+employee-map.json

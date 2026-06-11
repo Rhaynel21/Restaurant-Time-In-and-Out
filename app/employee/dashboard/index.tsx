@@ -1,27 +1,20 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import * as Location from "expo-location";
-import * as Network from "expo-network";
 import { useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 
 import { AmbientTop } from "@/components/ambient-top";
 import { BottomNav } from "@/components/bottom-nav";
 import { BrandTitle } from "@/components/brand-title";
 import { useSession } from "@/contexts/session-context";
 import { useResponsiveInset } from "@/hooks/use-responsive";
-import {
-  createCheckInRecord,
-  createCheckOutRecord,
-  getTodayAttendance,
-  syncPendingOperations,
-} from "@/lib/attendance";
+import { AttendanceRecord, subscribeTodayAttendance } from "@/lib/attendance";
 
 export default function Dashboard() {
   const router = useRouter();
   const inset = useResponsiveInset(22);
   const { width } = useWindowDimensions();
-  const { employee, selectedBranch, latestLocation, setLatestLocation } = useSession();
+  const { employee } = useSession();
 
   // Hero elements scale with the usable content width so they look right on
   // everything from small phones to tablets / web.
@@ -31,13 +24,11 @@ export default function Dashboard() {
   const clockFontSize = Math.max(42, Math.min(62, contentWidth * 0.165));
 
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [isCheckedIn, setIsCheckedIn] = useState(false);
   const [checkInAt, setCheckInAt] = useState<Date | null>(null);
   const [checkOutAt, setCheckOutAt] = useState<Date | null>(null);
-  const [isOnBreak, setIsOnBreak] = useState(false);
-  const [breakStartAt, setBreakStartAt] = useState<Date | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [syncMessage, setSyncMessage] = useState("");
+  const [isLive, setIsLive] = useState(false);
+
+  const isCheckedIn = checkInAt !== null && checkOutAt === null;
 
   useEffect(() => {
     if (!employee) {
@@ -50,96 +41,29 @@ export default function Dashboard() {
     return () => clearInterval(timer);
   }, []);
 
+  // Real-time stream of today's punches. The Hikvision bridge writes biometric
+  // scans into Firestore; this listener reflects them with no user action.
   useEffect(() => {
-    let mounted = true;
+    if (!employee) return;
 
-    const trySyncNow = async () => {
-      const state = await Network.getNetworkStateAsync();
-      if (!state.isConnected) return;
-      const result = await syncPendingOperations();
-      if (mounted && result.synced) {
-        setSyncMessage("Pending offline records synced.");
-      }
-    };
-
-    trySyncNow().catch(() => null);
-
-    const subscription = Network.addNetworkStateListener((state) => {
-      if (!state.isConnected) return;
-      syncPendingOperations()
-        .then((result) => {
-          if (mounted && result.synced) {
-            setSyncMessage("Pending offline records synced.");
-          }
-        })
-        .catch(() => null);
-    });
-
-    return () => {
-      mounted = false;
-      subscription.remove();
-    };
-  }, []);
-
-  useEffect(() => {
-    let mounted = true;
-
-    const hydrateTodayState = async () => {
-      if (!employee) return;
-      try {
-        const records = await getTodayAttendance(employee.employeeId);
-        if (!mounted || records.length === 0) return;
-
+    const unsubscribe = subscribeTodayAttendance(
+      employee.employeeId,
+      (records: AttendanceRecord[]) => {
+        setIsLive(true);
         const latest = records[0];
+        if (!latest) {
+          setCheckInAt(null);
+          setCheckOutAt(null);
+          return;
+        }
         setCheckInAt(latest.checkInAt);
         setCheckOutAt(latest.checkOutAt);
-        setIsCheckedIn(!latest.checkOutAt);
-      } catch (error) {
-        console.error(error);
-      }
-    };
+      },
+      () => setIsLive(false),
+    );
 
-    hydrateTodayState();
-
-    return () => {
-      mounted = false;
-    };
+    return unsubscribe;
   }, [employee]);
-
-  useEffect(() => {
-    let watcher: Location.LocationSubscription | null = null;
-
-    const watchLocation = async () => {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (permission.status !== "granted") return;
-
-      // expo-location's web build crashes on subscription cleanup (it calls the
-      // removed `LocationEventEmitter.removeSubscription`), so skip the live
-      // watcher on web.
-      if (Platform.OS === "web") return;
-
-      watcher = await Location.watchPositionAsync(
-        {
-          accuracy: Location.Accuracy.Balanced,
-          distanceInterval: 10,
-          timeInterval: 10000,
-        },
-        (position) => {
-          setLatestLocation({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-            accuracyMeters: position.coords.accuracy,
-          });
-        },
-      );
-    };
-
-    watchLocation().catch((error) => console.error(error));
-
-    return () => {
-      if (watcher) watcher.remove();
-    };
-  }, [setLatestLocation]);
 
   const timeLabel = currentTime.toLocaleTimeString("en-US", {
     hour: "2-digit",
@@ -186,19 +110,6 @@ export default function Dashboard() {
     return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
   }, [isCheckedIn, checkInAt, currentTime]);
 
-  const breakSecondsLeft = useMemo(() => {
-    if (!isOnBreak || !breakStartAt) return 3600;
-    const elapsed = Math.floor((currentTime.getTime() - breakStartAt.getTime()) / 1000);
-    return Math.max(0, 3600 - elapsed);
-  }, [isOnBreak, breakStartAt, currentTime]);
-
-  const breakTimerLabel = useMemo(() => {
-    const h = Math.floor(breakSecondsLeft / 3600);
-    const m = Math.floor((breakSecondsLeft % 3600) / 60);
-    const s = breakSecondsLeft % 60;
-    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-  }, [breakSecondsLeft]);
-
   const formatPunchTime = (value: Date | null) => {
     if (!value) return "--:--";
     return value.toLocaleTimeString("en-US", {
@@ -208,105 +119,20 @@ export default function Dashboard() {
     });
   };
 
-  const onCirclePress = async () => {
-    if (isSyncing || !employee) return;
+  // Three display states: on shift, shift ended today, or no scan yet.
+  const circleTheme: "in" | "out" | "idle" = isCheckedIn
+    ? "in"
+    : checkOutAt
+      ? "out"
+      : "idle";
 
-    if (isOnBreak) {
-      setIsOnBreak(false);
-      setBreakStartAt(null);
-      return;
-    }
+  const statusLabel = isCheckedIn
+    ? "On the Line"
+    : checkOutAt
+      ? "Shift Complete"
+      : "Awaiting Scan";
 
-    const activeBranch = selectedBranch
-      ? selectedBranch
-      : employee.branchId && employee.branchName
-        ? {
-            id: employee.branchId,
-            name: employee.branchName,
-            address: employee.branchName,
-            lat: 0,
-            lng: 0,
-          }
-        : null;
-
-    if (!activeBranch) {
-      setSyncMessage("Please confirm your branch first.");
-      router.replace("/select-branch");
-      return;
-    }
-
-    try {
-      setIsSyncing(true);
-      setSyncMessage("");
-
-      if (!isCheckedIn) {
-        const created = await createCheckInRecord({
-          employeeId: employee.employeeId,
-          employeeName: employee.fullName,
-          branch: activeBranch,
-          location: latestLocation,
-        });
-
-        setCheckInAt(created.checkInAt);
-        setCheckOutAt(null);
-        setIsCheckedIn(true);
-        setSyncMessage(
-          created.synced
-            ? "Time in synced to cloud."
-            : "Offline mode: time in saved locally and queued.",
-        );
-      } else {
-        const updated = await createCheckOutRecord({
-          employeeId: employee.employeeId,
-          location: latestLocation,
-        });
-
-        if (!updated) {
-          setSyncMessage("No active time in found.");
-          return;
-        }
-
-        setCheckInAt(updated.checkInAt);
-        setCheckOutAt(updated.checkOutAt);
-        setIsCheckedIn(false);
-        setIsOnBreak(false);
-        setBreakStartAt(null);
-        setSyncMessage(
-          updated.synced
-            ? "Time out synced to cloud."
-            : "Offline mode: time out saved locally and queued.",
-        );
-      }
-    } catch (error) {
-      console.error(error);
-      setSyncMessage("Unable to sync attendance. Please check internet.");
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  const onTakeBreak = () => {
-    setBreakStartAt(new Date());
-    setIsOnBreak(true);
-  };
-
-  const circleTheme = isOnBreak ? "break" : isCheckedIn ? "out" : "in";
-
-  const statusLabel = isSyncing
-    ? "Syncing Attendance"
-    : isOnBreak
-      ? "On Break"
-      : isCheckedIn
-        ? "On the Line"
-        : "Ready for Service";
-
-  const statusDotColor = isSyncing
-    ? "#3B82F6"
-    : isOnBreak
-      ? "#F59E0B"
-      : isCheckedIn
-        ? "#16A34A"
-        : "#8FA89A";
+  const statusDotColor = isCheckedIn ? "#16A34A" : checkOutAt ? "#059669" : "#8FA89A";
 
   const employeeName = employee?.fullName ?? "Alfred Cabato";
   const initials = employeeName
@@ -316,10 +142,12 @@ export default function Dashboard() {
     .join("")
     .toUpperCase();
 
-  const branchLabel = selectedBranch?.name ?? employee?.branchName ?? "Branch not set";
-  const locationLabel = latestLocation
-    ? `${latestLocation.lat.toFixed(5)}, ${latestLocation.lng.toFixed(5)}`
-    : "Location waiting";
+  const branchLabel = employee?.branchName ?? "Branch not set";
+
+  const circleTitle =
+    circleTheme === "in" ? "Clocked In" : circleTheme === "out" ? "Clocked Out" : "No Scan Yet";
+  const circleIcon =
+    circleTheme === "in" ? "chef-hat" : circleTheme === "out" ? "exit-to-app" : "fingerprint";
 
   return (
     <View style={styles.screen}>
@@ -342,13 +170,12 @@ export default function Dashboard() {
               <View style={[styles.statusDot, { backgroundColor: statusDotColor }]} />
               <Text style={styles.statusLabel}>{statusLabel}</Text>
             </View>
-            {syncMessage ? <Text style={styles.syncMessage}>{syncMessage}</Text> : null}
           </View>
-          <Pressable style={styles.avatarWrap} onPress={() => router.replace("/employee/profile")}>
+          <View style={styles.avatarWrap}>
             <View style={styles.avatar}>
               <Text style={styles.avatarText}>{initials}</Text>
             </View>
-          </Pressable>
+          </View>
         </View>
 
         <View style={styles.clockCard}>
@@ -367,72 +194,52 @@ export default function Dashboard() {
             <Text style={styles.clockSeconds}>:{secondsLabel}</Text>
           </View>
           <Text style={styles.dateText}>{dateLabel}</Text>
-          <Text style={styles.locationText}>Live GPS: {locationLabel}</Text>
         </View>
 
-        <Pressable
-          onPress={onCirclePress}
-          disabled={isSyncing}
-          style={[styles.checkAction, { borderRadius: circleSize / 2 }, isSyncing && styles.checkActionDisabled]}
-          android_ripple={{ color: "rgba(0,0,0,0.05)", borderless: true }}
-        >
+        {/* Read-only status dial — biometric device is the source of truth. */}
+        <View style={[styles.checkAction, { borderRadius: circleSize / 2 }]}>
           <View
             style={[
               styles.checkOuter,
               { width: circleSize, height: circleSize, borderRadius: circleSize / 2 },
               circleTheme === "out" && styles.checkOuterOut,
-              circleTheme === "break" && styles.checkOuterBreak,
+              circleTheme === "idle" && styles.checkOuterIdle,
             ]}
           >
             <View
               style={[
                 styles.checkInner,
                 { width: innerSize, height: innerSize, borderRadius: innerSize / 2 },
-                circleTheme === "out" && styles.checkInnerOut,
-                circleTheme === "break" && styles.checkInnerBreak,
               ]}
             >
-              {circleTheme === "break" ? (
-                <>
-                  <MaterialCommunityIcons name="coffee-outline" size={28} color="#92400E" />
-                  <Text style={styles.breakLabel}>Break</Text>
-                  <Text style={styles.breakTimer}>{breakTimerLabel}</Text>
-                  <View style={styles.endBreakPill}>
-                    <Text style={styles.endBreakText}>End Break</Text>
-                  </View>
-                </>
-              ) : (
-                <>
-                  <View style={[styles.iconBubble, circleTheme === "out" && styles.iconBubbleOut]}>
-                    <MaterialCommunityIcons
-                      name={circleTheme === "out" ? "exit-to-app" : "chef-hat"}
-                      size={26}
-                      color="#ffffff"
-                    />
-                  </View>
-                  <Text style={[styles.checkText, circleTheme === "out" && styles.checkTextOut]}>
-                    {circleTheme === "out" ? "End Shift" : "Start Shift"}
-                  </Text>
-                  {circleTheme === "out" && liveDurationLabel && (
-                    <Text style={styles.liveDuration}>{liveDurationLabel}</Text>
-                  )}
-                  {circleTheme === "in" && <Text style={styles.tapHint}>Tap to clock in</Text>}
-                </>
+              <View
+                style={[
+                  styles.iconBubble,
+                  circleTheme === "out" && styles.iconBubbleOut,
+                  circleTheme === "idle" && styles.iconBubbleIdle,
+                ]}
+              >
+                <MaterialCommunityIcons name={circleIcon} size={26} color="#ffffff" />
+              </View>
+              <Text style={[styles.checkText, circleTheme === "out" && styles.checkTextOut]}>
+                {circleTitle}
+              </Text>
+              {circleTheme === "in" && liveDurationLabel && (
+                <Text style={styles.liveDuration}>{liveDurationLabel}</Text>
               )}
+              {circleTheme === "idle" && <Text style={styles.tapHint}>Scan at the device</Text>}
             </View>
           </View>
-        </Pressable>
+        </View>
 
-        {isCheckedIn && !isOnBreak && (
-          <Pressable
-            onPress={onTakeBreak}
-            style={styles.breakBtn}
-            android_ripple={{ color: "rgba(0,0,0,0.05)" }}
-          >
-            <MaterialCommunityIcons name="coffee-outline" size={16} color="#92400E" />
-            <Text style={styles.breakBtnText}>Take a Break</Text>
-          </Pressable>
-        )}
+        <View style={styles.bioHint}>
+          <MaterialCommunityIcons name="fingerprint" size={15} color="#059669" />
+          <Text style={styles.bioHintText}>
+            {isLive
+              ? "Time in & out are recorded automatically at the biometric scanner."
+              : "Connecting to live attendance…"}
+          </Text>
+        </View>
 
         <View style={styles.statsHeader}>
           <Text style={styles.statsHeaderText}>Today&apos;s Shift</Text>
@@ -545,12 +352,6 @@ const styles = StyleSheet.create({
     color: "#5A7264",
     fontWeight: "500",
   },
-  syncMessage: {
-    marginTop: 6,
-    color: "#44604F",
-    fontSize: 12,
-    fontWeight: "600",
-  },
   avatarWrap: {
     width: 54,
     height: 54,
@@ -628,12 +429,6 @@ const styles = StyleSheet.create({
     color: "#5A7264",
     fontWeight: "500",
   },
-  locationText: {
-    marginTop: 8,
-    fontSize: 12,
-    color: "#8FA89A",
-    fontWeight: "500",
-  },
   branchTag: {
     flexDirection: "row",
     alignItems: "center",
@@ -657,26 +452,16 @@ const styles = StyleSheet.create({
   },
   checkAction: {
     alignSelf: "center",
-    borderRadius: 110,
     marginTop: 32,
   },
-  checkActionDisabled: {
-    opacity: 0.75,
-  },
   checkOuter: {
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    backgroundColor: "rgba(143, 168, 154, 0.15)",
+    backgroundColor: "rgba(22, 163, 74, 0.12)",
     justifyContent: "center",
     alignItems: "center",
   },
   checkOuterOut: { backgroundColor: "rgba(5, 150, 105, 0.12)" },
-  checkOuterBreak: { backgroundColor: "rgba(245, 158, 11, 0.15)" },
+  checkOuterIdle: { backgroundColor: "rgba(143, 168, 154, 0.15)" },
   checkInner: {
-    width: 188,
-    height: 188,
-    borderRadius: 94,
     backgroundColor: "#ffffff",
     justifyContent: "center",
     alignItems: "center",
@@ -688,12 +473,6 @@ const styles = StyleSheet.create({
     elevation: 6,
     borderWidth: 1,
     borderColor: "rgba(11, 42, 30, 0.04)",
-  },
-  checkInnerOut: {
-    backgroundColor: "#ffffff",
-  },
-  checkInnerBreak: {
-    backgroundColor: "#FFFBEB",
   },
   iconBubble: {
     width: 52,
@@ -711,6 +490,10 @@ const styles = StyleSheet.create({
   iconBubbleOut: {
     backgroundColor: "#059669",
     shadowColor: "#059669",
+  },
+  iconBubbleIdle: {
+    backgroundColor: "#8FA89A",
+    shadowColor: "#8FA89A",
   },
   checkText: {
     fontSize: 20,
@@ -730,56 +513,29 @@ const styles = StyleSheet.create({
   liveDuration: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#059669",
+    color: "#16A34A",
     letterSpacing: 0.5,
     fontVariant: ["tabular-nums"],
   },
-  breakLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#92400E",
-    letterSpacing: 1.4,
-    textTransform: "uppercase",
-    marginTop: 4,
-  },
-  breakTimer: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#78350F",
-    letterSpacing: 1,
-    fontVariant: ["tabular-nums"],
-  },
-  endBreakPill: {
-    marginTop: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 5,
-    borderRadius: 12,
-    backgroundColor: "#059669",
-  },
-  endBreakText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#ffffff",
-    letterSpacing: 0.5,
-  },
-  breakBtn: {
-    alignSelf: "center",
-    marginTop: 20,
+  bioHint: {
+    marginTop: 22,
     flexDirection: "row",
     alignItems: "center",
-    gap: 7,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 22,
-    backgroundColor: "#FFFBEB",
+    justifyContent: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: "rgba(5, 150, 105, 0.06)",
     borderWidth: 1,
-    borderColor: "#FCD34D",
+    borderColor: "rgba(5, 150, 105, 0.12)",
   },
-  breakBtnText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#92400E",
-    letterSpacing: 0.2,
+  bioHintText: {
+    flex: 1,
+    fontSize: 12,
+    color: "#44604F",
+    fontWeight: "500",
+    lineHeight: 17,
   },
   statsHeader: {
     marginTop: 32,

@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -15,43 +15,83 @@ import {
 
 import { AmbientTop } from "@/components/ambient-top";
 import { KitchenMark } from "@/components/kitchen-mark";
+import { Colors } from "@/constants/theme";
 import { useSession } from "@/contexts/session-context";
 import { useResponsiveInset } from "@/hooks/use-responsive";
-import { OFFLINE_LOGIN_CACHE_MISS, ensureEmployeeProfile } from "@/lib/attendance";
+import { AUTH_ERRORS, onAuthChange, signIn, signOutUser } from "@/lib/auth";
 
 export default function LoginScreen() {
   const router = useRouter();
   const inset = useResponsiveInset(24);
-  const { setEmployee, setSelectedBranch } = useSession();
-  const [employeeId, setEmployeeId] = useState("");
+  const { setEmployee } = useSession();
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [focusedField, setFocusedField] = useState<"id" | "password" | null>(null);
   const [rememberMe, setRememberMe] = useState(true);
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [restoring, setRestoring] = useState(true);
+
+  // Restore a remembered session on launch via Firebase Auth state.
+  useEffect(() => {
+    const unsub = onAuthChange((profile) => {
+      if (profile && profile.accessRole === "staff") {
+        setEmployee(profile);
+        router.replace("/employee/dashboard");
+      } else if (profile) {
+        // A manager/admin session is restored but the app is staff-only.
+        signOutUser().catch(() => null);
+        setErrorMessage("This is a manager account. Please use the web Manager Portal.");
+        setRestoring(false);
+      } else {
+        setRestoring(false);
+      }
+    });
+    return unsub;
+  }, [router, setEmployee]);
 
   const onSignIn = async () => {
+    if (isSigningIn) return;
     try {
       setIsSigningIn(true);
       setErrorMessage("");
-      const profile = await ensureEmployeeProfile(employeeId);
+      const profile = await signIn(identifier, password, rememberMe);
+
+      // App is staff-only; managers/admins use the web manager portal.
+      if (profile.accessRole !== "staff") {
+        await signOutUser();
+        setErrorMessage("This is a manager account. Please use the web Manager Portal to sign in.");
+        return;
+      }
+
       setEmployee(profile);
-      setSelectedBranch(null);
-      router.replace("/select-branch");
+      router.replace("/employee/dashboard");
     } catch (error) {
-      const isOfflineCacheMiss =
-        error instanceof Error && error.message === OFFLINE_LOGIN_CACHE_MISS;
+      const code = error instanceof Error ? error.message : "";
       setErrorMessage(
-        isOfflineCacheMiss
-          ? "Offline login unavailable for this ID. Sign in once while online first."
-          : "Unable to reach cloud. If this account logged in before, offline mode will still work.",
+        code === AUTH_ERRORS.NOT_FOUND
+          ? "No account found for that ID/email."
+          : code === AUTH_ERRORS.WRONG_PASSWORD
+            ? "Incorrect password. Please try again."
+            : code === AUTH_ERRORS.OFFLINE
+              ? "Can't reach the server. Check your internet connection."
+              : "Unable to sign in. Please try again.",
       );
-      console.error(error);
     } finally {
       setIsSigningIn(false);
     }
   };
+
+  if (restoring) {
+    return (
+      <View style={[styles.screen, styles.center]}>
+        <AmbientTop height={320} />
+        <KitchenMark size={84} />
+        <Text style={styles.restoreText}>Loading…</Text>
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -75,30 +115,23 @@ export default function LoginScreen() {
 
         <View style={styles.card}>
           <Text style={styles.welcomeTitle}>Welcome back</Text>
-          <Text style={styles.welcomeSubtitle}>
-            Sign in to start your shift.
-          </Text>
+          <Text style={styles.welcomeSubtitle}>Sign in to start your shift.</Text>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.fieldLabel}>Employee ID</Text>
-            <View
-              style={[
-                styles.inputWrap,
-                focusedField === "id" && styles.inputWrapFocused,
-              ]}
-            >
+            <Text style={styles.fieldLabel}>Employee ID or Email</Text>
+            <View style={[styles.inputWrap, focusedField === "id" && styles.inputWrapFocused]}>
               <Ionicons
                 name="person-outline"
                 size={18}
-                color={focusedField === "id" ? "#059669" : "#8FA89A"}
+                color={focusedField === "id" ? Colors.primary : Colors.textFaint}
               />
               <TextInput
                 style={styles.input}
-                value={employeeId}
-                onChangeText={setEmployeeId}
-                placeholder="e.g. EMP-1027"
-                placeholderTextColor="#B0C8B8"
-                autoCapitalize="characters"
+                value={identifier}
+                onChangeText={setIdentifier}
+                placeholder="e.g. EMP-1027 or you@thymein.local"
+                placeholderTextColor={Colors.textPlaceholder}
+                autoCapitalize="none"
                 onFocus={() => setFocusedField("id")}
                 onBlur={() => setFocusedField(null)}
               />
@@ -107,35 +140,28 @@ export default function LoginScreen() {
 
           <View style={styles.inputGroup}>
             <Text style={styles.fieldLabel}>Password</Text>
-            <View
-              style={[
-                styles.inputWrap,
-                focusedField === "password" && styles.inputWrapFocused,
-              ]}
-            >
+            <View style={[styles.inputWrap, focusedField === "password" && styles.inputWrapFocused]}>
               <Ionicons
                 name="lock-closed-outline"
                 size={18}
-                color={focusedField === "password" ? "#059669" : "#8FA89A"}
+                color={focusedField === "password" ? Colors.primary : Colors.textFaint}
               />
               <TextInput
                 style={styles.input}
                 value={password}
                 onChangeText={setPassword}
                 placeholder="Enter your password"
-                placeholderTextColor="#B0C8B8"
+                placeholderTextColor={Colors.textPlaceholder}
                 secureTextEntry={!showPassword}
                 onFocus={() => setFocusedField("password")}
                 onBlur={() => setFocusedField(null)}
+                onSubmitEditing={onSignIn}
               />
-              <Pressable
-                onPress={() => setShowPassword((prev) => !prev)}
-                hitSlop={10}
-              >
+              <Pressable onPress={() => setShowPassword((prev) => !prev)} hitSlop={10}>
                 <Ionicons
                   name={showPassword ? "eye-outline" : "eye-off-outline"}
                   size={19}
-                  color="#8FA89A"
+                  color={Colors.textFaint}
                 />
               </Pressable>
             </View>
@@ -147,20 +173,10 @@ export default function LoginScreen() {
               style={styles.rememberRow}
               hitSlop={6}
             >
-              <View
-                style={[
-                  styles.checkbox,
-                  rememberMe && styles.checkboxOn,
-                ]}
-              >
-                {rememberMe && (
-                  <Ionicons name="checkmark" size={12} color="#ffffff" />
-                )}
+              <View style={[styles.checkbox, rememberMe && styles.checkboxOn]}>
+                {rememberMe && <Ionicons name="checkmark" size={12} color="#ffffff" />}
               </View>
               <Text style={styles.rememberText}>Remember me</Text>
-            </Pressable>
-            <Pressable hitSlop={6}>
-              <Text style={styles.forgotText}>Forgot password?</Text>
             </Pressable>
           </View>
 
@@ -170,19 +186,22 @@ export default function LoginScreen() {
             disabled={isSigningIn}
             activeOpacity={0.9}
           >
-            <Text style={styles.signInBtnText}>
-              {isSigningIn ? "Signing In..." : "Sign In"}
-            </Text>
+            <Text style={styles.signInBtnText}>{isSigningIn ? "Signing In..." : "Sign In"}</Text>
             {!isSigningIn && <Ionicons name="arrow-forward" size={18} color="#ffffff" />}
           </TouchableOpacity>
 
           {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+
+          <View style={styles.signupRow}>
+            <Text style={styles.signupHint}>New here?</Text>
+            <Pressable onPress={() => router.push("/signup" as never)} hitSlop={6}>
+              <Text style={styles.signupLink}>Create a staff account</Text>
+            </Pressable>
+          </View>
         </View>
 
         <View style={styles.footerWrap}>
-          <Text style={styles.footerText}>
-            © 2026 Thyme In · v1.0.0
-          </Text>
+          <Text style={styles.footerText}>© 2026 Thyme In · v1.0.0</Text>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -192,7 +211,17 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#F2FBF6",
+    backgroundColor: Colors.background,
+  },
+  center: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 16,
+  },
+  restoreText: {
+    color: Colors.textSubtle,
+    fontSize: 13,
+    fontWeight: "600",
   },
   scrollContent: {
     flexGrow: 1,
@@ -211,38 +240,38 @@ const styles = StyleSheet.create({
   wordmark: {
     fontSize: 28,
     fontWeight: "800",
-    color: "#059669",
+    color: Colors.primary,
     letterSpacing: 2,
   },
   tagline: {
-    color: "#44604F",
+    color: Colors.textMuted,
     fontSize: 12,
     textTransform: "uppercase",
     letterSpacing: 3,
     fontWeight: "600",
   },
   card: {
-    backgroundColor: "#ffffff",
+    backgroundColor: Colors.cardSurface,
     borderRadius: 24,
     padding: 28,
-    shadowColor: "#0B2A1E",
+    shadowColor: Colors.shadowWarm,
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.06,
     shadowRadius: 28,
     elevation: 6,
     borderWidth: 1,
-    borderColor: "rgba(11, 42, 30, 0.04)",
+    borderColor: Colors.hairline,
   },
   welcomeTitle: {
     fontSize: 26,
     fontWeight: "700",
-    color: "#0B2A1E",
+    color: Colors.textPrimary,
     letterSpacing: -0.6,
   },
   welcomeSubtitle: {
     marginTop: 6,
     marginBottom: 24,
-    color: "#5A7264",
+    color: Colors.textSubtle,
     fontSize: 14,
     lineHeight: 20,
   },
@@ -253,24 +282,24 @@ const styles = StyleSheet.create({
   fieldLabel: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#1E3A2C",
+    color: Colors.textBody,
     letterSpacing: 0.2,
   },
   inputWrap: {
     height: 52,
     borderRadius: 12,
-    backgroundColor: "#E7F7EF",
+    backgroundColor: Colors.warmSurface,
     borderWidth: 1,
-    borderColor: "#C6E8D5",
+    borderColor: Colors.warmBorder,
     paddingHorizontal: 14,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
   },
   inputWrapFocused: {
-    backgroundColor: "#ffffff",
-    borderColor: "#059669",
-    shadowColor: "#059669",
+    backgroundColor: Colors.cardSurface,
+    borderColor: Colors.primary,
+    shadowColor: Colors.primary,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.1,
     shadowRadius: 6,
@@ -279,7 +308,7 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     height: "100%",
-    color: "#0B2A1E",
+    color: Colors.textPrimary,
     fontSize: 15,
     fontWeight: "500",
   },
@@ -300,34 +329,29 @@ const styles = StyleSheet.create({
     height: 18,
     borderRadius: 5,
     borderWidth: 1.5,
-    borderColor: "#B0C8B8",
-    backgroundColor: "#ffffff",
+    borderColor: Colors.textPlaceholder,
+    backgroundColor: Colors.cardSurface,
     alignItems: "center",
     justifyContent: "center",
   },
   checkboxOn: {
-    borderColor: "#059669",
-    backgroundColor: "#059669",
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary,
   },
   rememberText: {
     fontSize: 13,
-    color: "#44604F",
+    color: Colors.textMuted,
     fontWeight: "500",
-  },
-  forgotText: {
-    fontSize: 13,
-    color: "#059669",
-    fontWeight: "600",
   },
   signInBtn: {
     height: 54,
     borderRadius: 14,
-    backgroundColor: "#059669",
+    backgroundColor: Colors.primary,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    shadowColor: "#059669",
+    shadowColor: Colors.primary,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.25,
     shadowRadius: 16,
@@ -346,8 +370,24 @@ const styles = StyleSheet.create({
     marginTop: 12,
     textAlign: "center",
     fontSize: 12,
-    color: "#B91C1C",
+    color: Colors.danger,
     fontWeight: "600",
+  },
+  signupRow: {
+    marginTop: 20,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 6,
+  },
+  signupHint: {
+    fontSize: 13,
+    color: Colors.textSubtle,
+  },
+  signupLink: {
+    fontSize: 13,
+    color: Colors.primary,
+    fontWeight: "700",
   },
   footerWrap: {
     marginTop: 32,
@@ -355,7 +395,7 @@ const styles = StyleSheet.create({
   },
   footerText: {
     textAlign: "center",
-    color: "#8FA89A",
+    color: Colors.textFaint,
     fontSize: 11,
     fontWeight: "500",
     letterSpacing: 0.3,
