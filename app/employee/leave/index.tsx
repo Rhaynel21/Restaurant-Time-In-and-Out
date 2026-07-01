@@ -1,5 +1,5 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { Redirect } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
@@ -32,7 +32,6 @@ const STATUS_META: Record<LeaveStatus, { label: string; color: string; bg: strin
 };
 
 export default function LeaveScreen() {
-  const router = useRouter();
   const inset = useResponsiveInset(18);
   const { employee } = useSession();
 
@@ -45,10 +44,6 @@ export default function LeaveScreen() {
   const [picker, setPicker] = useState<null | "start" | "end">(null);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
-
-  useEffect(() => {
-    if (!employee) router.replace("/login");
-  }, [employee, router]);
 
   useEffect(() => {
     if (!employee) return;
@@ -83,7 +78,7 @@ export default function LeaveScreen() {
     }
   };
 
-  if (!employee) return null;
+  if (!employee) return <Redirect href="/login" />;
 
   return (
     <View style={styles.screen}>

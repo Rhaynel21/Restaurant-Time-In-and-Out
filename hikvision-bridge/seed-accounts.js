@@ -21,12 +21,27 @@ admin.initializeApp({ credential: admin.credential.cert(require(keyPath)) });
 const db = admin.firestore();
 const fbAuth = admin.auth();
 
-// Accounts to provision, one per role. Change passwords after first login.
+// Accounts to provision. Change passwords after first login.
+//   • admin   → full access (web portal)
+//   • manager → branch manager (web portal: approvals, attendance, schedules, DTR)
+//   • staff   → mobile app only
+// Branches: kio-bgc (BGC), kio-makati (Makati), kio-qc (Quezon City).
 const ACCOUNTS = [
-  { employeeId: "ADMIN-001", fullName: "Thyme Admin", email: "admin@thymein.local",   phone: "+63 917 000 0001", role: "Administrator", accessRole: "admin",   branchId: "kio-bgc",    branchName: "Thyme In - BGC",    password: "admin123" },
-  { employeeId: "MGR-001",   fullName: "Maria Santos", email: "manager@thymein.local", phone: "+63 917 000 0002", role: "Branch Manager", accessRole: "manager", branchId: "kio-bgc",    branchName: "Thyme In - BGC",    password: "manager123" },
-  { employeeId: "EMP-1001",  fullName: "Juan Dela Cruz", email: "juan@thymein.local",  phone: "+63 917 000 0003", role: "Line Cook",      accessRole: "staff",   branchId: "kio-bgc",    branchName: "Thyme In - BGC",    password: "staff123" },
-  { employeeId: "EMP-1002",  fullName: "Ana Reyes",     email: "ana@thymein.local",    phone: "+63 917 000 0004", role: "Server",         accessRole: "staff",   branchId: "kio-makati", branchName: "Thyme In - Makati", password: "staff123" },
+  // ── Admin ──
+  { employeeId: "ADMIN-001", fullName: "Qui Admin",     email: "admin@qui.local",    phone: "+63 917 000 0001", role: "Administrator",  accessRole: "admin",   branchId: "kio-bgc",    branchName: "Qui - BGC",         password: "admin123" },
+
+  // ── Managers (one per branch) ──
+  { employeeId: "MGR-001",   fullName: "Maria Santos",    email: "manager@qui.local",  phone: "+63 917 000 0002", role: "Branch Manager", accessRole: "manager", branchId: "kio-bgc",    branchName: "Qui - BGC",         password: "manager123" },
+  { employeeId: "MGR-002",   fullName: "Carlo Mendoza",   email: "carlo@qui.local",    phone: "+63 917 000 0005", role: "Branch Manager", accessRole: "manager", branchId: "kio-makati", branchName: "Qui - Makati",      password: "manager123" },
+  { employeeId: "MGR-003",   fullName: "Liza Tan",        email: "liza@qui.local",     phone: "+63 917 000 0006", role: "Branch Manager", accessRole: "manager", branchId: "kio-qc",     branchName: "Qui - Quezon City", password: "manager123" },
+
+  // ── Staff ──
+  { employeeId: "EMP-1001",  fullName: "Juan Dela Cruz",  email: "juan@qui.local",     phone: "+63 917 000 0003", role: "Line Cook",      accessRole: "staff",   branchId: "kio-bgc",    branchName: "Qui - BGC",         password: "staff123" },
+  { employeeId: "EMP-1002",  fullName: "Ana Reyes",       email: "ana@qui.local",      phone: "+63 917 000 0004", role: "Server",         accessRole: "staff",   branchId: "kio-makati", branchName: "Qui - Makati",      password: "staff123" },
+  { employeeId: "EMP-1003",  fullName: "Mark Villanueva", email: "mark@qui.local",     phone: "+63 917 000 0007", role: "Sous Chef",      accessRole: "staff",   branchId: "kio-bgc",    branchName: "Qui - BGC",         password: "staff123" },
+  { employeeId: "EMP-1004",  fullName: "Grace Lim",       email: "grace@qui.local",    phone: "+63 917 000 0008", role: "Barista",        accessRole: "staff",   branchId: "kio-qc",     branchName: "Qui - Quezon City", password: "staff123" },
+  { employeeId: "EMP-1005",  fullName: "Paolo Garcia",    email: "paolo@qui.local",    phone: "+63 917 000 0009", role: "Dishwasher",     accessRole: "staff",   branchId: "kio-makati", branchName: "Qui - Makati",      password: "staff123" },
+  { employeeId: "EMP-1006",  fullName: "Bea Cruz",        email: "bea@qui.local",      phone: "+63 917 000 0010", role: "Cashier",        accessRole: "staff",   branchId: "kio-qc",     branchName: "Qui - Quezon City", password: "staff123" },
 ];
 
 async function ensureAuthUser(acc) {

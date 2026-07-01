@@ -45,9 +45,33 @@ const config = {
   // Ignore a repeat scan from the same person within this window (anti double-tap).
   debounceSeconds: Number(optional("DEBOUNCE_SECONDS", "60")),
 
+  // ── Device identity (for heartbeat + alarms in Firestore) ──
+  deviceId: optional("DEVICE_ID", "kio-terminal-1"),
+  deviceName: optional("DEVICE_NAME", "Qui Biometric Terminal"),
+
+  // ── Tamper / anti-fraud detection ──
+  // Mark the device "offline" after this many consecutive failed polls.
+  offlineAfterFails: Number(optional("OFFLINE_AFTER_FAILS", "3")),
+  // A burst of this many failed-auth attempts within the window is flagged as a
+  // possible tampering / forced-entry attempt. DISABLED unless you list which
+  // minor codes count as a failed authentication (HIK_FAILED_AUTH_MINORS) — many
+  // devices emit no-employeeNo sub-events (door open/close) on a *successful*
+  // scan, so counting every emptyemployee event causes false alarms.
+  failedAuthThreshold: Number(optional("FAILED_AUTH_THRESHOLD", "5")),
+  failedAuthWindowSeconds: Number(optional("FAILED_AUTH_WINDOW_SECONDS", "120")),
+  failedAuthMinors: optional("HIK_FAILED_AUTH_MINORS", "")
+    .split(",")
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isFinite(n) && n > 0),
+  // Extra Hikvision minor codes to treat as a tamper/case alarm (comma list).
+  tamperMinors: optional("HIK_TAMPER_MINORS", "")
+    .split(",")
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isFinite(n) && n > 0),
+
   // Fallback branch used when an employee has no branch on their Firestore doc.
   defaultBranchId: optional("DEFAULT_BRANCH_ID", "kio-bgc"),
-  defaultBranchName: optional("DEFAULT_BRANCH_NAME", "Thyme In - BGC"),
+  defaultBranchName: optional("DEFAULT_BRANCH_NAME", "Qui - BGC"),
 
   employeeMap: loadEmployeeMap(),
 };

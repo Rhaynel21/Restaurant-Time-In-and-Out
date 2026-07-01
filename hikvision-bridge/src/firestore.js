@@ -1,9 +1,10 @@
-// Firestore writer. Mirrors the exact `attendance` document shape the Thyme In
+// Firestore writer. Mirrors the exact `attendance` document shape the Qui
 // app reads, so biometric punches are indistinguishable from app-created ones.
 const path = require("path");
 const fs = require("fs");
 const admin = require("firebase-admin");
 const config = require("./config");
+const queue = require("./queue");
 
 const keyPath = path.join(__dirname, "..", "serviceAccountKey.json");
 if (!fs.existsSync(keyPath)) {
@@ -71,9 +72,25 @@ async function findLatestRecord(employeeId) {
   return latest;
 }
 
-async function writeCheckIn(emp, time) {
-  const id = `${emp.employeeId}-${time.getTime()}-bio`;
-  await db.collection("attendance").doc(id).set({
+// A network-class error means we're offline — queue the write and replay later
+// rather than losing the punch. Anything else (e.g. permission denied) is a real
+// bug we want surfaced, so it's re-thrown.
+function isOffline(err) {
+  const code = err && (err.code || err.errno);
+  return (
+    code === 14 || // gRPC UNAVAILABLE
+    code === 4 || // DEADLINE_EXCEEDED
+    code === "unavailable" ||
+    code === "deadline-exceeded" ||
+    code === "ENOTFOUND" ||
+    code === "ECONNREFUSED" ||
+    code === "ETIMEDOUT" ||
+    /network|ENOTFOUND|ETIMEDOUT|ECONNRESET|unavailable/i.test(String(err && err.message))
+  );
+}
+
+function checkInDoc(emp, time) {
+  return {
     employeeId: emp.employeeId,
     employeeName: emp.name,
     branchId: emp.branchId,
@@ -86,8 +103,29 @@ async function writeCheckIn(emp, time) {
     source: "hikvision",
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
+  };
+}
+
+async function writeCheckIn(emp, time) {
+  // Deterministic ID makes the write idempotent, so a queued replay can never
+  // create a duplicate record.
+  const id = `${emp.employeeId}-${time.getTime()}-bio`;
+  try {
+    await db.collection("attendance").doc(id).set(checkInDoc(emp, time));
+  } catch (err) {
+    if (!isOffline(err)) throw err;
+    queue.enqueue({ kind: "checkin", emp, timeMs: time.getTime() });
+  }
   return id;
+}
+
+function checkOutDoc(time, totalMinutes) {
+  return {
+    checkOutAt: Timestamp.fromDate(time),
+    totalMinutes,
+    source: "hikvision",
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
 }
 
 async function writeCheckOut(openRecord, time) {
@@ -97,16 +135,80 @@ async function writeCheckOut(openRecord, time) {
       : time.getTime();
   const totalMinutes = Math.max(0, Math.round((time.getTime() - checkInMs) / 60000));
 
-  await db.collection("attendance").doc(openRecord.id).set(
-    {
-      checkOutAt: Timestamp.fromDate(time),
-      totalMinutes,
-      source: "hikvision",
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    },
-    { merge: true },
-  );
+  try {
+    await db.collection("attendance").doc(openRecord.id).set(checkOutDoc(time, totalMinutes), { merge: true });
+  } catch (err) {
+    if (!isOffline(err)) throw err;
+    queue.enqueue({ kind: "checkout", recordId: openRecord.id, totalMinutes, timeMs: time.getTime() });
+  }
   return { id: openRecord.id, totalMinutes };
+}
+
+// Replay one queued write. Idempotent: same deterministic IDs as the live path.
+async function replayOp(op) {
+  if (op.kind === "checkin") {
+    const time = new Date(op.timeMs);
+    const id = `${op.emp.employeeId}-${op.timeMs}-bio`;
+    await db.collection("attendance").doc(id).set(checkInDoc(op.emp, time));
+  } else if (op.kind === "checkout") {
+    await db
+      .collection("attendance")
+      .doc(op.recordId)
+      .set(checkOutDoc(new Date(op.timeMs), op.totalMinutes), { merge: true });
+  }
+}
+
+// Drain any punches captured while offline. Returns how many were flushed.
+async function flushQueue() {
+  return queue.flush(replayOp);
+}
+
+// Heartbeat: lets the manager portal show whether the terminal is online.
+async function heartbeat(online, meta = {}) {
+  try {
+    await db
+      .collection("deviceStatus")
+      .doc(config.deviceId)
+      .set(
+        {
+          deviceId: config.deviceId,
+          deviceName: config.deviceName,
+          online,
+          lastSeenAt: admin.firestore.FieldValue.serverTimestamp(),
+          queueDepth: queue.size(),
+          ...meta,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+  } catch {
+    // best-effort; never let telemetry break the main loop
+  }
+}
+
+// Record a tamper / anti-fraud alarm for the manager portal.
+async function recordAlarm(alarm) {
+  try {
+    await db
+      .collection("deviceAlarms")
+      .doc(`${config.deviceId}-${alarm.key}`)
+      .set(
+        {
+          deviceId: config.deviceId,
+          deviceName: config.deviceName,
+          type: alarm.type,
+          severity: alarm.severity,
+          message: alarm.message,
+          count: alarm.count ?? null,
+          at: alarm.at ? Timestamp.fromDate(alarm.at) : admin.firestore.FieldValue.serverTimestamp(),
+          acknowledged: false,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+  } catch {
+    // best-effort
+  }
 }
 
 module.exports = {
@@ -115,4 +217,7 @@ module.exports = {
   findLatestRecord,
   writeCheckIn,
   writeCheckOut,
+  flushQueue,
+  heartbeat,
+  recordAlarm,
 };

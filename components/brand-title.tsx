@@ -1,44 +1,54 @@
-import { StyleSheet, Text, View } from "react-native";
+import { Platform, StyleSheet, Text, View } from "react-native";
 
-import { KitchenMark } from "@/components/kitchen-mark";
 import { Colors } from "@/constants/theme";
 
 type Variant = "light" | "onPrimary";
 
 type Props = {
-  /** Icon diameter in px. Defaults to 30. */
+  /** Wordmark cap height in px. Defaults to 30. */
   size?: number;
-  /** "light" = green text for light surfaces; "onPrimary" = light text for the green banner. */
+  /** "light" = ink wordmark for light surfaces; "onPrimary" = ivory wordmark for the dark banner. */
   variant?: Variant;
+  /** Show the "Pan-Asian Brasserie" kicker beneath the wordmark. Defaults to true. */
+  tagline?: boolean;
 };
 
-export function BrandTitle({ size = 30, variant = "light" }: Props) {
+const SERIF = Platform.select({ ios: "Georgia", android: "serif", default: "Georgia" });
+
+/**
+ * Qui wordmark — lowercase high-contrast serif, with an optional spaced
+ * "PAN-ASIAN BRASSERIE" kicker. Pure type, no raster asset.
+ */
+export function BrandTitle({ size = 30, variant = "light", tagline = true }: Props) {
   const isOnPrimary = variant === "onPrimary";
+  const ink = isOnPrimary ? Colors.textOnDark : Colors.textPrimary;
+  const sub = isOnPrimary ? "rgba(247,245,240,0.7)" : Colors.textSubtle;
   return (
-    <View style={styles.row}>
-      <KitchenMark size={size} />
-      <Text style={[styles.text, isOnPrimary ? styles.textOnPrimary : styles.textLight]}>
-        Thyme In
-      </Text>
+    <View style={styles.col}>
+      <Text style={[styles.word, { fontSize: size, color: ink }]}>qui</Text>
+      {tagline ? (
+        <Text style={[styles.kicker, { fontSize: Math.max(8, size * 0.26), color: sub }]}>
+          PAN-ASIAN BRASSERIE
+        </Text>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 9,
+  col: {
+    alignItems: "flex-start",
   },
-  text: {
-    fontSize: 18,
-    fontWeight: "800",
-    letterSpacing: 0.4,
+  word: {
+    fontFamily: SERIF,
+    fontWeight: "700",
+    letterSpacing: 1,
+    lineHeight: undefined,
   },
-  textLight: {
-    color: Colors.primary,
-  },
-  textOnPrimary: {
-    color: Colors.textOnDark,
+  kicker: {
+    fontFamily: SERIF,
+    fontWeight: "500",
+    letterSpacing: 3,
+    marginTop: 2,
   },
 });

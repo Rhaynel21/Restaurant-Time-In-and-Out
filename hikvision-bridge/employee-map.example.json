@@ -1,5 +1,5 @@
 {
-  "_comment": "Map Hikvision device person IDs (employeeNo) to Thyme In app employeeIds. Copy this file to employee-map.json. If a device ID is missing here, the bridge uses the device ID itself (uppercased) as the app employeeId.",
+  "_comment": "Map Hikvision device person IDs (employeeNo) to Qui app employeeIds. Copy this file to employee-map.json. If a device ID is missing here, the bridge uses the device ID itself (uppercased) as the app employeeId.",
   "1": "EMP-0001",
   "2": "EMP-0002",
   "1027": "EMP-1027"

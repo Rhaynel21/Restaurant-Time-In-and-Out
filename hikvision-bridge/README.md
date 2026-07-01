@@ -1,7 +1,7 @@
-# Thyme In · Hikvision Attendance Bridge
+# Qui · Hikvision Attendance Bridge
 
 Mirrors clock in/out punches from a Hikvision access-control / biometric device
-into the Thyme In Firestore `attendance` collection. The mobile app listens to
+into the Qui Firestore `attendance` collection. The mobile app listens to
 Firestore in real time, so a scan on the device shows up in the app
 automatically — no button to press.
 
@@ -63,7 +63,7 @@ Use [PM2](https://pm2.keymetrics.io/) or NSSM to run it as a background service:
 
 ```
 npm i -g pm2
-pm2 start src/index.js --name thymein-bridge
+pm2 start src/index.js --name qui-bridge
 pm2 save
 pm2 startup   # follow the printed instructions to auto-start on boot
 ```

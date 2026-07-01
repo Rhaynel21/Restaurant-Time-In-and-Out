@@ -8,6 +8,7 @@ import { BrandTitle } from "@/components/brand-title";
 import { useSession } from "@/contexts/session-context";
 import { useResponsiveInset } from "@/hooks/use-responsive";
 import { AttendanceRecord, getRecentAttendance } from "@/lib/attendance";
+import { Holiday, getHoliday, holidayColor, holidaysInMonth } from "@/lib/holidays";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -23,6 +24,10 @@ function getDaysInMonth(year: number, month: number) {
   return new Date(year, month + 1, 0).getDate();
 }
 
+function cellYMD(year: number, month: number, day: number) {
+  return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
 function getFirstDayOfMonth(year: number, month: number) {
   return new Date(year, month, 1).getDay();
 }
@@ -34,9 +39,9 @@ function isLate(date: Date) {
 type DayStatus = "present" | "late" | "absent";
 
 function statusColor(status: DayStatus) {
-  if (status === "present") return "#16A34A";
-  if (status === "late") return "#CA8A04";
-  return "#DC2626";
+  if (status === "present") return "#2F6B4F";
+  if (status === "late") return "#9A7B3F";
+  return "#B23A3A";
 }
 
 function formatTime(value: Date) {
@@ -118,8 +123,15 @@ export default function HistoryScreen() {
     // Today and future days are never absent; neither are days before the
     // employee's first record (i.e. before they started using the app).
     if (cellTime >= todayStart || cellTime < earliestRecordStart) return undefined;
+    // A non-working holiday with no scan isn't an absence.
+    if (getHoliday(cellYMD(year, month, day))) return undefined;
     return "absent";
   };
+
+  // Holidays for the displayed month, plus the one on the selected day (if any).
+  const monthHolidays = useMemo(() => holidaysInMonth(year, month), [year, month]);
+  const selectedHoliday: Holiday | null =
+    selectedDate !== null ? getHoliday(cellYMD(year, month, selectedDate)) : null;
 
   const totalDays = getDaysInMonth(year, month);
   const firstDay = getFirstDayOfMonth(year, month);
@@ -169,6 +181,7 @@ export default function HistoryScreen() {
       if (earliestRecordStart === null) continue;
       const cellTime = new Date(year, month, day).getTime();
       if (cellTime >= todayStart || cellTime < earliestRecordStart) continue;
+      if (getHoliday(cellYMD(year, month, day))) continue; // holidays aren't absences
       absent += 1;
     }
     return { present, late, absent };
@@ -181,7 +194,7 @@ export default function HistoryScreen() {
       <View style={[styles.header, { paddingHorizontal: inset }]}>
         <BrandTitle size={28} />
         <Pressable style={styles.iconBtn} onPress={loadHistory}>
-          <Ionicons name="refresh" size={18} color="#0B2A1E" />
+          <Ionicons name="refresh" size={18} color="#141414" />
         </Pressable>
       </View>
 
@@ -191,21 +204,21 @@ export default function HistoryScreen() {
       >
         {/* ── Summary chips ── */}
         <View style={styles.summaryRow}>
-          <SummaryChip label="Present" value={summary.present} color="#16A34A" />
-          <SummaryChip label="Late" value={summary.late} color="#CA8A04" />
-          <SummaryChip label="Absent" value={summary.absent} color="#DC2626" />
+          <SummaryChip label="Present" value={summary.present} color="#2F6B4F" />
+          <SummaryChip label="Late" value={summary.late} color="#9A7B3F" />
+          <SummaryChip label="Absent" value={summary.absent} color="#B23A3A" />
         </View>
 
         {/* ── Month navigation ── */}
         <View style={styles.monthNav}>
           <TouchableOpacity onPress={goPrev} style={styles.navBtn}>
-            <Ionicons name="chevron-back" size={18} color="#0B2A1E" />
+            <Ionicons name="chevron-back" size={18} color="#141414" />
             <Text style={styles.navLabel}>Prev</Text>
           </TouchableOpacity>
           <Text style={styles.monthLabel}>{MONTHS[month]} {year}</Text>
           <TouchableOpacity onPress={goNext} style={styles.navBtn}>
             <Text style={styles.navLabel}>Next</Text>
-            <Ionicons name="chevron-forward" size={18} color="#0B2A1E" />
+            <Ionicons name="chevron-forward" size={18} color="#141414" />
           </TouchableOpacity>
         </View>
 
@@ -222,8 +235,22 @@ export default function HistoryScreen() {
               if (cell === null) return <View key={`empty-${idx}`} style={styles.calCell} />;
 
               const status = getDayStatus(cell);
+              const holiday = getHoliday(cellYMD(year, month, cell));
               const isSelected = cell === selectedDate;
-              const bgColor = isSelected && status ? statusColor(status) : undefined;
+              // A worked-on holiday keeps its attendance dot; an idle holiday
+              // shows the holiday colour instead.
+              const dotColor = status
+                ? statusColor(status)
+                : holiday
+                  ? holidayColor(holiday.type)
+                  : undefined;
+              const bgColor = isSelected
+                ? status
+                  ? statusColor(status)
+                  : holiday
+                    ? holidayColor(holiday.type)
+                    : undefined
+                : undefined;
 
               return (
                 <TouchableOpacity
@@ -231,8 +258,8 @@ export default function HistoryScreen() {
                   style={[
                     styles.calCell,
                     isSelected && styles.calCellSelected,
-                    isSelected && status && { backgroundColor: bgColor },
-                    isSelected && !status && styles.calCellSelectedEmpty,
+                    isSelected && bgColor && { backgroundColor: bgColor },
+                    isSelected && !bgColor && styles.calCellSelectedEmpty,
                   ]}
                   onPress={() => setSelectedDate(prev => prev === cell ? null : cell)}
                   activeOpacity={0.7}
@@ -240,12 +267,12 @@ export default function HistoryScreen() {
                   {/* Top spacer mirrors the dot slot below so the number stays
                       vertically centered in the cell (and in the selected box). */}
                   <View style={styles.dotSlot} />
-                  <Text style={[styles.calDate, isSelected && status && styles.calDateSelected]}>
+                  <Text style={[styles.calDate, isSelected && bgColor && styles.calDateSelected]}>
                     {cell}
                   </Text>
                   <View style={styles.dotSlot}>
-                    {status && !isSelected ? (
-                      <View style={[styles.dot, { backgroundColor: statusColor(status) }]} />
+                    {dotColor && !isSelected ? (
+                      <View style={[styles.dot, { backgroundColor: dotColor }]} />
                     ) : null}
                   </View>
                 </TouchableOpacity>
@@ -254,11 +281,45 @@ export default function HistoryScreen() {
           </View>
 
           <View style={styles.legend}>
-            <LegendItem color="#16A34A" label="Present" />
-            <LegendItem color="#CA8A04" label="Late" />
-            <LegendItem color="#DC2626" label="Absent" />
+            <LegendItem color="#2F6B4F" label="Present" />
+            <LegendItem color="#9A7B3F" label="Late" />
+            <LegendItem color="#B23A3A" label="Absent" />
+            <LegendItem color="#1A1A1A" label="Holiday" />
           </View>
         </View>
+
+        {/* ── Holidays this month ── */}
+        {monthHolidays.length > 0 && (
+          <View style={styles.holidayCard}>
+            <View style={styles.holidayCardHeader}>
+              <MaterialCommunityIcons name="party-popper" size={15} color="#1A1A1A" />
+              <Text style={styles.holidayCardTitle}>Holidays this month</Text>
+            </View>
+            {monthHolidays.map((h) => {
+              const day = Number(h.date.slice(8, 10));
+              return (
+                <TouchableOpacity
+                  key={h.date}
+                  style={styles.holidayRow}
+                  onPress={() => setSelectedDate(day)}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.holidayDot, { backgroundColor: holidayColor(h.type) }]} />
+                  <Text style={styles.holidayDate}>{MONTHS[month].slice(0, 3)} {day}</Text>
+                  <Text style={styles.holidayName} numberOfLines={1}>{h.name}</Text>
+                  <Text
+                    style={[
+                      styles.holidayType,
+                      { color: holidayColor(h.type) },
+                    ]}
+                  >
+                    {h.type === "regular" ? "Regular" : "Special"}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
 
         {/* ── Records list ── */}
         <Text style={styles.sectionLabel}>
@@ -267,12 +328,29 @@ export default function HistoryScreen() {
             : "Recent Records"}
         </Text>
 
+        {selectedHoliday && (
+          <View style={[styles.holidayBanner, { borderColor: holidayColor(selectedHoliday.type) }]}>
+            <MaterialCommunityIcons
+              name="calendar-star"
+              size={16}
+              color={holidayColor(selectedHoliday.type)}
+            />
+            <Text style={styles.holidayBannerText}>
+              {selectedHoliday.name}
+              <Text style={styles.holidayBannerType}>
+                {"  ·  "}
+                {selectedHoliday.type === "regular" ? "Regular Holiday" : "Special Non-Working"}
+              </Text>
+            </Text>
+          </View>
+        )}
+
         {isLoading ? <Text style={styles.messageText}>Loading attendance...</Text> : null}
         {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
 
         {filteredRecords.length === 0 && !isLoading ? (
           <View style={styles.emptyState}>
-            <MaterialCommunityIcons name="calendar-remove-outline" size={48} color="#B0C8B8" />
+            <MaterialCommunityIcons name="calendar-remove-outline" size={48} color="#C4C4C4" />
             <Text style={styles.emptyText}>No attendance records yet</Text>
           </View>
         ) : (
@@ -358,7 +436,7 @@ function TimeBlock({
   return (
     <View style={styles.timeBlock}>
       <View style={styles.timeLabelRow}>
-        <MaterialCommunityIcons name={icon} size={11} color="#8FA89A" />
+        <MaterialCommunityIcons name={icon} size={11} color="#A8A8A8" />
         <Text style={styles.timeLabel}>{label}</Text>
       </View>
       <Text style={styles.timeValue}>{value}</Text>
@@ -371,7 +449,7 @@ function TimeBlock({
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#F2FBF6",
+    backgroundColor: "#F7F5F0",
   },
   header: {
     flexDirection: "row",
@@ -387,13 +465,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#ffffff",
-    shadowColor: "#0B2A1E",
+    shadowColor: "#141414",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 6,
     elevation: 2,
     borderWidth: 1,
-    borderColor: "rgba(11, 42, 30, 0.04)",
+    borderColor: "rgba(10, 10, 10, 0.04)",
   },
   scroll: {
     paddingTop: 8,
@@ -415,13 +493,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 12,
     borderRadius: 14,
-    shadowColor: "#0B2A1E",
+    shadowColor: "#141414",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
     shadowRadius: 8,
     elevation: 2,
     borderWidth: 1,
-    borderColor: "rgba(11, 42, 30, 0.04)",
+    borderColor: "rgba(10, 10, 10, 0.04)",
   },
   summaryDot: {
     width: 8,
@@ -431,12 +509,12 @@ const styles = StyleSheet.create({
   summaryValue: {
     fontSize: 17,
     fontWeight: "700",
-    color: "#0B2A1E",
+    color: "#141414",
     lineHeight: 20,
   },
   summaryLabel: {
     fontSize: 10,
-    color: "#8FA89A",
+    color: "#A8A8A8",
     fontWeight: "600",
     textTransform: "uppercase",
     letterSpacing: 0.6,
@@ -459,17 +537,17 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#C6E8D5",
+    borderColor: "#E3DED4",
   },
   navLabel: {
     fontSize: 13,
-    color: "#0B2A1E",
+    color: "#141414",
     fontWeight: "500",
   },
   monthLabel: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#0B2A1E",
+    color: "#141414",
   },
 
   // Calendar
@@ -478,13 +556,13 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 16,
     marginBottom: 20,
-    shadowColor: "#0B2A1E",
+    shadowColor: "#141414",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 10,
     elevation: 3,
     borderWidth: 1,
-    borderColor: "rgba(11, 42, 30, 0.04)",
+    borderColor: "rgba(10, 10, 10, 0.04)",
   },
   calRow: {
     flexDirection: "row",
@@ -495,7 +573,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: 11,
     fontWeight: "700",
-    color: "#8FA89A",
+    color: "#A8A8A8",
     textTransform: "uppercase",
     letterSpacing: 0.4,
   },
@@ -516,11 +594,11 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   calCellSelectedEmpty: {
-    backgroundColor: "rgba(5, 150, 105, 0.12)",
+    backgroundColor: "rgba(10, 10, 10, 0.10)",
   },
   calDate: {
     fontSize: 14,
-    color: "#0B2A1E",
+    color: "#141414",
     fontWeight: "500",
   },
   calDateSelected: {
@@ -548,7 +626,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: "#DAF1E6",
+    borderTopColor: "#EAE6DD",
   },
   legendItem: {
     flexDirection: "row",
@@ -562,15 +640,95 @@ const styles = StyleSheet.create({
   },
   legendLabel: {
     fontSize: 11,
-    color: "#8FA89A",
+    color: "#A8A8A8",
     fontWeight: "600",
+  },
+
+  // Holidays this month
+  holidayCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 20,
+    shadowColor: "#141414",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: "rgba(10, 10, 10, 0.04)",
+  },
+  holidayCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    marginBottom: 10,
+  },
+  holidayCardTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#141414",
+    letterSpacing: 0.2,
+  },
+  holidayRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 7,
+  },
+  holidayDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  holidayDate: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#8A8A8A",
+    width: 46,
+    fontVariant: ["tabular-nums"],
+  },
+  holidayName: {
+    flex: 1,
+    fontSize: 13,
+    color: "#141414",
+    fontWeight: "500",
+  },
+  holidayType: {
+    fontSize: 10,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  holidayBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#ffffff",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderLeftWidth: 3,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  holidayBannerText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#141414",
+  },
+  holidayBannerType: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#A8A8A8",
   },
 
   // Section label
   sectionLabel: {
     fontSize: 15,
     fontWeight: "700",
-    color: "#0B2A1E",
+    color: "#141414",
     marginBottom: 12,
   },
 
@@ -578,13 +736,13 @@ const styles = StyleSheet.create({
   messageText: {
     textAlign: "center",
     marginVertical: 12,
-    color: "#5A7264",
+    color: "#8A8A8A",
     fontWeight: "600",
   },
   errorText: {
     textAlign: "center",
     marginBottom: 12,
-    color: "#B91C1C",
+    color: "#8E2F2F",
     fontWeight: "600",
   },
   emptyState: {
@@ -594,7 +752,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 14,
-    color: "#8FA89A",
+    color: "#A8A8A8",
     fontWeight: "500",
   },
 
@@ -604,13 +762,13 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: 14,
     marginBottom: 10,
-    shadowColor: "#0B2A1E",
+    shadowColor: "#141414",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
     shadowRadius: 10,
     elevation: 2,
     borderWidth: 1,
-    borderColor: "rgba(11, 42, 30, 0.04)",
+    borderColor: "rgba(10, 10, 10, 0.04)",
   },
   cardHeader: {
     flexDirection: "row",
@@ -624,19 +782,19 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(5, 150, 105, 0.08)",
+    backgroundColor: "rgba(10, 10, 10, 0.05)",
   },
   badgeDate: {
     fontSize: 22,
     fontWeight: "700",
     lineHeight: 24,
-    color: "#059669",
+    color: "#0A0A0A",
   },
   badgeDay: {
     fontSize: 10,
     fontWeight: "700",
     textTransform: "uppercase",
-    color: "#059669",
+    color: "#0A0A0A",
   },
   branchInfo: {
     flex: 1,
@@ -645,16 +803,16 @@ const styles = StyleSheet.create({
   branchName: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#0B2A1E",
+    color: "#141414",
   },
   branchDate: {
     fontSize: 12,
-    color: "#8FA89A",
+    color: "#A8A8A8",
   },
   timeRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#E7F7EF",
+    backgroundColor: "#F2EFE9",
     borderRadius: 12,
     paddingVertical: 12,
   },
@@ -671,12 +829,12 @@ const styles = StyleSheet.create({
   timeValue: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#0B2A1E",
+    color: "#141414",
     fontVariant: ["tabular-nums"],
   },
   timeLabel: {
     fontSize: 10,
-    color: "#8FA89A",
+    color: "#A8A8A8",
     fontWeight: "600",
     textTransform: "uppercase",
     letterSpacing: 0.5,
@@ -684,6 +842,6 @@ const styles = StyleSheet.create({
   verticalDivider: {
     width: 1,
     height: 28,
-    backgroundColor: "#C6E8D5",
+    backgroundColor: "#E3DED4",
   },
 });

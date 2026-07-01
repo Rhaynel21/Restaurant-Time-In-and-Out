@@ -1,4 +1,4 @@
-// Thyme In — Hikvision attendance bridge.
+// Qui — Hikvision attendance bridge.
 //
 //   [Hikvision device]  --ISAPI poll-->  [this bridge]  --writes-->  [Firestore]
 //                                                                        |
@@ -11,11 +11,18 @@ const config = require("./config");
 const { fetchEvents, normalizeEvent } = require("./hikvision");
 const store = require("./firestore");
 const state = require("./state");
+const tamper = require("./tamper");
 
 const seenSet = new Set();
 let lastTimeMs = null;
 // Per-employee timestamp of the last punch we wrote, for debouncing.
 const lastPunchByEmployee = new Map();
+// Alarm keys already reported, so a sustained incident isn't re-logged each poll.
+const tamperSeen = new Set();
+// Health tracking for the device heartbeat / offline detection.
+let consecutiveFails = 0;
+let lastHeartbeatMs = 0;
+let lastOnline = null;
 
 function log(...args) {
   console.log(new Date().toISOString(), ...args);
@@ -33,12 +40,11 @@ async function processEvent(evt) {
 
   const open = await store.findOpenRecord(emp.employeeId);
 
-  // Direction: respect the device's T&A status if it sends one, otherwise infer
-  // from whether the employee currently has an open (un-checked-out) record.
-  let direction;
-  if (evt.attendanceStatus === "checkIn") direction = "in";
-  else if (evt.attendanceStatus === "checkOut") direction = "out";
-  else direction = open ? "out" : "in";
+  // Direction: pure toggle on the employee's open shift — open → clock OUT,
+  // none → clock IN. We intentionally IGNORE the device's attendanceStatus: this
+  // model (DS-K1T804AMF) reports "checkIn" on every scan, so trusting it would
+  // make every scan an IN and a clock-out would never register.
+  const direction = open ? "out" : "in";
 
   if (direction === "out") {
     if (!open) {
@@ -73,6 +79,14 @@ async function poll() {
     : new Date(now.getFullYear(), now.getMonth(), now.getDate()); // today 00:00 on first run
 
   const raw = await fetchEvents(start, now);
+
+  // Anti-fraud / tamper pass over the full raw stream (includes denied/unknown
+  // scans that aren't real punches). Detected alarms are mirrored to Firestore.
+  for (const alarm of tamper.analyze(raw, tamperSeen)) {
+    log(`⚠ ALARM [${alarm.severity}] ${alarm.type}: ${alarm.message}`);
+    await store.recordAlarm(alarm);
+  }
+
   const events = raw
     .map(normalizeEvent)
     .filter(Boolean)
@@ -99,7 +113,7 @@ async function main() {
   lastTimeMs = persisted.lastTimeMs;
   persisted.seen.forEach((k) => seenSet.add(k));
 
-  log("Thyme In · Hikvision bridge starting");
+  log("Qui · Hikvision bridge starting");
   log(`Device:   ${config.deviceBaseUrl}`);
   log(`Interval: ${config.pollIntervalMs}ms`);
   log(lastTimeMs ? `Resuming from ${new Date(lastTimeMs).toISOString()}` : "Fresh start (today)");
@@ -110,8 +124,18 @@ async function main() {
     polling = true;
     try {
       await poll();
+      consecutiveFails = 0;
+      // Replay anything captured while offline, then mark the device healthy.
+      const flushed = await store.flushQueue();
+      if (flushed) log(`↻ flushed ${flushed} queued punch(es) to Firestore`);
+      await reportHealth(true);
     } catch (err) {
+      consecutiveFails += 1;
       log(`! poll error: ${err.message}`);
+      // Only declare the terminal offline after a few misses, to ride out blips.
+      if (consecutiveFails >= config.offlineAfterFails) {
+        await reportHealth(false, { lastError: String(err.message).slice(0, 200) });
+      }
     } finally {
       polling = false;
     }
@@ -119,6 +143,18 @@ async function main() {
 
   await tick();
   setInterval(tick, config.pollIntervalMs);
+}
+
+// Throttled heartbeat: write at most once a minute, or immediately whenever the
+// online/offline state flips (so an outage shows up right away).
+async function reportHealth(online, meta = {}) {
+  const now = Date.now();
+  const changed = online !== lastOnline;
+  if (!changed && now - lastHeartbeatMs < 60000) return;
+  lastOnline = online;
+  lastHeartbeatMs = now;
+  await store.heartbeat(online, meta);
+  if (changed) log(online ? "● device ONLINE" : "○ device OFFLINE");
 }
 
 main().catch((err) => {

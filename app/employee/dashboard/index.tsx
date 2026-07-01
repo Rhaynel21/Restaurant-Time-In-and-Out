@@ -1,7 +1,7 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
-import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 
 import { AmbientTop } from "@/components/ambient-top";
 import { BottomNav } from "@/components/bottom-nav";
@@ -29,12 +29,6 @@ export default function Dashboard() {
   const [isLive, setIsLive] = useState(false);
 
   const isCheckedIn = checkInAt !== null && checkOutAt === null;
-
-  useEffect(() => {
-    if (!employee) {
-      router.replace("/login");
-    }
-  }, [employee, router]);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -91,10 +85,11 @@ export default function Dashboard() {
         ? "Good afternoon"
         : "Good evening";
 
+  // Worked-hours = clock out − clock in. Only "--:--" until there's a checkout;
+  // once clocked out we always show the computed total (HH:MM), even if short.
   const totalHoursLabel = useMemo(() => {
     if (!checkInAt || !checkOutAt) return "--:--";
-    const diffMs = checkOutAt.getTime() - checkInAt.getTime();
-    if (diffMs <= 0) return "--:--";
+    const diffMs = Math.max(0, checkOutAt.getTime() - checkInAt.getTime());
     const hours = Math.floor(diffMs / 3600000);
     const minutes = Math.floor((diffMs % 3600000) / 60000);
     return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
@@ -132,7 +127,7 @@ export default function Dashboard() {
       ? "Shift Complete"
       : "Awaiting Scan";
 
-  const statusDotColor = isCheckedIn ? "#16A34A" : checkOutAt ? "#059669" : "#8FA89A";
+  const statusDotColor = isCheckedIn ? "#2F6B4F" : checkOutAt ? "#0A0A0A" : "#A8A8A8";
 
   const employeeName = employee?.fullName ?? "Alfred Cabato";
   const initials = employeeName
@@ -148,6 +143,11 @@ export default function Dashboard() {
     circleTheme === "in" ? "Clocked In" : circleTheme === "out" ? "Clocked Out" : "No Scan Yet";
   const circleIcon =
     circleTheme === "in" ? "chef-hat" : circleTheme === "out" ? "exit-to-app" : "fingerprint";
+
+  // No session → bounce to login. Declarative <Redirect> waits for the navigator
+  // to be ready (an imperative router.replace in an effect can fire too early and
+  // throw "navigate before mounting the Root Layout").
+  if (!employee) return <Redirect href="/login" />;
 
   return (
     <View style={styles.screen}>
@@ -181,7 +181,7 @@ export default function Dashboard() {
         <View style={styles.clockCard}>
           <View style={styles.clockHeader}>
             <View style={styles.clockHeaderLeft}>
-              <Ionicons name="time-outline" size={13} color="#5A7264" />
+              <Ionicons name="time-outline" size={13} color="#8A8A8A" />
               <Text style={styles.clockHeaderText}>Current time</Text>
             </View>
             <View style={styles.branchTag}>
@@ -233,7 +233,7 @@ export default function Dashboard() {
         </View>
 
         <View style={styles.bioHint}>
-          <MaterialCommunityIcons name="fingerprint" size={15} color="#059669" />
+          <MaterialCommunityIcons name="fingerprint" size={15} color="#0A0A0A" />
           <Text style={styles.bioHintText}>
             {isLive
               ? "Time in & out are recorded automatically at the biometric scanner."
@@ -249,24 +249,35 @@ export default function Dashboard() {
             icon="login-variant"
             value={formatPunchTime(checkInAt)}
             label="Clock In"
-            tint="#16A34A"
-            bg="rgba(22, 163, 74, 0.08)"
+            tint="#2F6B4F"
+            bg="rgba(47, 107, 79, 0.08)"
           />
           <MetricCard
             icon="logout-variant"
             value={formatPunchTime(checkOutAt)}
             label="Clock Out"
-            tint="#059669"
-            bg="rgba(5, 150, 105, 0.08)"
+            tint="#0A0A0A"
+            bg="rgba(10, 10, 10, 0.05)"
           />
           <MetricCard
             icon="clock-outline"
             value={totalHoursLabel}
             label="Hours"
-            tint="#1E3A2C"
-            bg="rgba(30, 58, 44, 0.08)"
+            tint="#2A2A2A"
+            bg="rgba(20, 20, 20, 0.08)"
           />
         </View>
+
+        <Pressable style={styles.scheduleLink} onPress={() => router.push("/employee/schedule" as never)}>
+          <View style={styles.scheduleLinkIcon}>
+            <MaterialCommunityIcons name="calendar-clock" size={20} color="#0A0A0A" />
+          </View>
+          <View style={styles.scheduleLinkText}>
+            <Text style={styles.scheduleLinkTitle}>My Schedule</Text>
+            <Text style={styles.scheduleLinkSub}>View your shifts for the week</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#A8A8A8" />
+        </Pressable>
       </ScrollView>
 
       <BottomNav active="home" />
@@ -301,7 +312,7 @@ function MetricCard({
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#F2FBF6",
+    backgroundColor: "#F7F5F0",
   },
   scroll: {
     flex: 1,
@@ -325,14 +336,14 @@ const styles = StyleSheet.create({
   eyebrow: {
     fontSize: 11,
     fontWeight: "600",
-    color: "#5A7264",
+    color: "#8A8A8A",
     letterSpacing: 1.4,
     textTransform: "uppercase",
   },
   greeting: {
     fontSize: 30,
     fontWeight: "700",
-    color: "#0B2A1E",
+    color: "#141414",
     letterSpacing: -0.8,
     marginTop: 4,
   },
@@ -349,7 +360,7 @@ const styles = StyleSheet.create({
   },
   statusLabel: {
     fontSize: 13,
-    color: "#5A7264",
+    color: "#8A8A8A",
     fontWeight: "500",
   },
   avatarWrap: {
@@ -360,10 +371,10 @@ const styles = StyleSheet.create({
     width: 54,
     height: 54,
     borderRadius: 27,
-    backgroundColor: "#0B2A1E",
+    backgroundColor: "#141414",
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#0B2A1E",
+    shadowColor: "#141414",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
     shadowRadius: 8,
@@ -380,13 +391,13 @@ const styles = StyleSheet.create({
     padding: 20,
     borderRadius: 22,
     backgroundColor: "#ffffff",
-    shadowColor: "#0B2A1E",
+    shadowColor: "#141414",
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.05,
     shadowRadius: 18,
     elevation: 3,
     borderWidth: 1,
-    borderColor: "rgba(11, 42, 30, 0.04)",
+    borderColor: "rgba(10, 10, 10, 0.04)",
   },
   clockHeader: {
     flexDirection: "row",
@@ -401,7 +412,7 @@ const styles = StyleSheet.create({
   clockHeaderText: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#5A7264",
+    color: "#8A8A8A",
     letterSpacing: 0.3,
   },
   clockRow: {
@@ -413,12 +424,12 @@ const styles = StyleSheet.create({
     fontSize: 52,
     letterSpacing: -2,
     fontWeight: "300",
-    color: "#0B2A1E",
+    color: "#141414",
     lineHeight: 58,
   },
   clockSeconds: {
     fontSize: 22,
-    color: "#059669",
+    color: "#0A0A0A",
     fontWeight: "600",
     marginBottom: 9,
     marginLeft: 2,
@@ -426,7 +437,7 @@ const styles = StyleSheet.create({
   dateText: {
     marginTop: 4,
     fontSize: 13,
-    color: "#5A7264",
+    color: "#8A8A8A",
     fontWeight: "500",
   },
   branchTag: {
@@ -435,19 +446,19 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 10,
     paddingVertical: 5,
-    backgroundColor: "rgba(5, 150, 105, 0.08)",
+    backgroundColor: "rgba(10, 10, 10, 0.05)",
     borderRadius: 10,
   },
   branchTagDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: "#059669",
+    backgroundColor: "#0A0A0A",
   },
   branchTagText: {
     fontSize: 11,
     fontWeight: "600",
-    color: "#059669",
+    color: "#0A0A0A",
     letterSpacing: 0.2,
   },
   checkAction: {
@@ -455,65 +466,65 @@ const styles = StyleSheet.create({
     marginTop: 32,
   },
   checkOuter: {
-    backgroundColor: "rgba(22, 163, 74, 0.12)",
+    backgroundColor: "rgba(47, 107, 79, 0.12)",
     justifyContent: "center",
     alignItems: "center",
   },
-  checkOuterOut: { backgroundColor: "rgba(5, 150, 105, 0.12)" },
-  checkOuterIdle: { backgroundColor: "rgba(143, 168, 154, 0.15)" },
+  checkOuterOut: { backgroundColor: "rgba(10, 10, 10, 0.10)" },
+  checkOuterIdle: { backgroundColor: "rgba(168, 168, 168, 0.15)" },
   checkInner: {
     backgroundColor: "#ffffff",
     justifyContent: "center",
     alignItems: "center",
     gap: 6,
-    shadowColor: "#0B2A1E",
+    shadowColor: "#141414",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.08,
     shadowRadius: 20,
     elevation: 6,
     borderWidth: 1,
-    borderColor: "rgba(11, 42, 30, 0.04)",
+    borderColor: "rgba(10, 10, 10, 0.04)",
   },
   iconBubble: {
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: "#16A34A",
+    backgroundColor: "#2F6B4F",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#16A34A",
+    shadowColor: "#2F6B4F",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 10,
     elevation: 4,
   },
   iconBubbleOut: {
-    backgroundColor: "#059669",
-    shadowColor: "#059669",
+    backgroundColor: "#0A0A0A",
+    shadowColor: "#0A0A0A",
   },
   iconBubbleIdle: {
-    backgroundColor: "#8FA89A",
-    shadowColor: "#8FA89A",
+    backgroundColor: "#A8A8A8",
+    shadowColor: "#A8A8A8",
   },
   checkText: {
     fontSize: 20,
-    color: "#0B2A1E",
+    color: "#141414",
     fontWeight: "700",
     letterSpacing: -0.4,
     marginTop: 4,
   },
-  checkTextOut: { color: "#059669" },
+  checkTextOut: { color: "#0A0A0A" },
   tapHint: {
     fontSize: 10,
     fontWeight: "600",
-    color: "#8FA89A",
+    color: "#A8A8A8",
     letterSpacing: 1.5,
     textTransform: "uppercase",
   },
   liveDuration: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#16A34A",
+    color: "#2F6B4F",
     letterSpacing: 0.5,
     fontVariant: ["tabular-nums"],
   },
@@ -526,14 +537,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 14,
-    backgroundColor: "rgba(5, 150, 105, 0.06)",
+    backgroundColor: "rgba(10, 10, 10, 0.04)",
     borderWidth: 1,
-    borderColor: "rgba(5, 150, 105, 0.12)",
+    borderColor: "rgba(10, 10, 10, 0.10)",
   },
   bioHintText: {
     flex: 1,
     fontSize: 12,
-    color: "#44604F",
+    color: "#6B6B6B",
     fontWeight: "500",
     lineHeight: 17,
   },
@@ -544,7 +555,7 @@ const styles = StyleSheet.create({
   statsHeaderText: {
     fontSize: 11,
     fontWeight: "700",
-    color: "#5A7264",
+    color: "#8A8A8A",
     letterSpacing: 1.4,
     textTransform: "uppercase",
   },
@@ -553,19 +564,46 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 10,
   },
+  scheduleLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    marginTop: 14,
+    padding: 16,
+    borderRadius: 16,
+    backgroundColor: "#ffffff",
+    shadowColor: "#141414",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: "rgba(10, 10, 10, 0.04)",
+  },
+  scheduleLinkIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: "rgba(10, 10, 10, 0.05)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  scheduleLinkText: { flex: 1 },
+  scheduleLinkTitle: { fontSize: 15, fontWeight: "700", color: "#141414" },
+  scheduleLinkSub: { fontSize: 12, color: "#A8A8A8", fontWeight: "500", marginTop: 2 },
   metricCard: {
     flex: 1,
     alignItems: "flex-start",
     backgroundColor: "#ffffff",
     padding: 14,
     borderRadius: 16,
-    shadowColor: "#0B2A1E",
+    shadowColor: "#141414",
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.04,
     shadowRadius: 10,
     elevation: 2,
     borderWidth: 1,
-    borderColor: "rgba(11, 42, 30, 0.04)",
+    borderColor: "rgba(10, 10, 10, 0.04)",
     gap: 10,
   },
   metricIconWrap: {
@@ -578,14 +616,14 @@ const styles = StyleSheet.create({
   metricValue: {
     fontSize: 15,
     fontWeight: "700",
-    color: "#0B2A1E",
+    color: "#141414",
     letterSpacing: -0.2,
     fontVariant: ["tabular-nums"],
   },
   metricLabel: {
     marginTop: -6,
     fontSize: 10,
-    color: "#8FA89A",
+    color: "#A8A8A8",
     fontWeight: "600",
     textTransform: "uppercase",
     letterSpacing: 0.6,

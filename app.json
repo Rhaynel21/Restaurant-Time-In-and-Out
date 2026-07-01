@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Thyme In",
-    "slug": "thyme-in",
+    "name": "Qui",
+    "slug": "qui",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/logo.png",
-    "scheme": "thymein",
+    "scheme": "qui",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
@@ -14,7 +14,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/logo.png",
-        "backgroundColor": "#059669"
+        "backgroundColor": "#FFFFFF"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
@@ -31,9 +31,9 @@
           "image": "./assets/images/logo.png",
           "imageWidth": 180,
           "resizeMode": "contain",
-          "backgroundColor": "#F2FBF6",
+          "backgroundColor": "#F7F5F0",
           "dark": {
-            "backgroundColor": "#06281C"
+            "backgroundColor": "#0A0A0A"
           }
         }
       ],

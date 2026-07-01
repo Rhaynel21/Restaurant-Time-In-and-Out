@@ -121,7 +121,7 @@ export default function SignUpScreen() {
             label="Email"
             value={email}
             onChange={setEmail}
-            placeholder="you@thymein.local"
+            placeholder="you@qui.local"
             autoCapitalize="none"
             keyboardType="email-address"
           />
@@ -139,7 +139,7 @@ export default function SignUpScreen() {
                   style={[styles.branchChip, active && styles.branchChipActive]}
                 >
                   <Text style={[styles.branchChipText, active && styles.branchChipTextActive]}>
-                    {b.name.replace("Thyme In - ", "")}
+                    {b.name.replace("Qui - ", "")}
                   </Text>
                 </Pressable>
               );

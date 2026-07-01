@@ -125,7 +125,7 @@ export function DatePickerModal({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: "rgba(11, 42, 30, 0.45)",
+    backgroundColor: "rgba(10, 10, 10, 0.45)",
     alignItems: "center",
     justifyContent: "center",
     padding: 24,

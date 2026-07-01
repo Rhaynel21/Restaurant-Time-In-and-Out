@@ -15,21 +15,21 @@ export type LocationPoint = {
 export const BRANCHES: Branch[] = [
   {
     id: "kio-qc",
-    name: "Thyme In - Quezon City",
+    name: "Qui - Quezon City",
     address: "32 Tomas Morato Ave, Quezon City",
     lat: 14.63093,
     lng: 121.03371,
   },
   {
     id: "kio-makati",
-    name: "Thyme In - Makati",
+    name: "Qui - Makati",
     address: "5th Floor, Paseo Tower, Makati City",
     lat: 14.55686,
     lng: 121.01975,
   },
   {
     id: "kio-bgc",
-    name: "Thyme In - BGC",
+    name: "Qui - BGC",
     address: "26th St, Bonifacio Global City, Taguig",
     lat: 14.55122,
     lng: 121.04673,

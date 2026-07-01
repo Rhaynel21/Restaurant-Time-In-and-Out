@@ -40,7 +40,7 @@ async function fetchEvents(start, end) {
   for (let page = 0; page < 200; page += 1) {
     const body = JSON.stringify({
       AcsEventCond: {
-        searchID: "thymein-bridge",
+        searchID: "qui-bridge",
         searchResultPosition: position,
         maxResults: 30,
         major: config.eventMajor,
@@ -109,7 +109,9 @@ function normalizeEvent(raw) {
   };
 }
 
-// Quick reachability / auth check used by `npm run test:connect`.
+// Quick reachability / auth check used by `npm run test:connect`. Some models
+// (e.g. DS-K1T804AMF) ignore `?format=json` for deviceInfo and reply with XML,
+// so we parse whichever we get and normalize to a `{ DeviceInfo: {...} }` shape.
 async function ping() {
   const url = `${config.deviceBaseUrl}/ISAPI/System/deviceInfo?format=json`;
   const res = await digestFetch(url, {
@@ -118,7 +120,25 @@ async function ping() {
     password: config.password,
   });
   if (!res.ok) throw new Error(`deviceInfo HTTP ${res.status}`);
-  return res.json();
+
+  const text = await res.text();
+  try {
+    return JSON.parse(text); // JSON-capable device
+  } catch {
+    // Fall back to lifting the handful of fields we display out of the XML.
+    const tag = (name) => {
+      const m = text.match(new RegExp(`<${name}>([^<]*)</${name}>`, "i"));
+      return m ? m[1].trim() : undefined;
+    };
+    return {
+      DeviceInfo: {
+        deviceName: tag("deviceName"),
+        model: tag("model"),
+        firmwareVersion: tag("firmwareVersion"),
+        serialNumber: tag("serialNumber"),
+      },
+    };
+  }
 }
 
 module.exports = { fetchEvents, normalizeEvent, ping, toDeviceTime };

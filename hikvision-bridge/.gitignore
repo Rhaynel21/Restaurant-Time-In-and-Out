@@ -3,3 +3,4 @@ node_modules/
 serviceAccountKey.json
 state.json
 employee-map.json
+logs/

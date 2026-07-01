@@ -179,6 +179,23 @@ export function subscribePendingLeaves(
   );
 }
 
+// Real-time stream of ALL leave requests (for the manager portal's history).
+export function subscribeAllLeaves(
+  onChange: (leaves: LeaveRequest[]) => void,
+  onError?: (error: Error) => void,
+) {
+  const q = query(collection(db, "leaves"), limit(300));
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const items = snapshot.docs.map((d) => toLeaveRequest(d.id, d.data() as Record<string, unknown>));
+      items.sort(sortByRecency);
+      onChange(items);
+    },
+    (error) => onError?.(error as Error),
+  );
+}
+
 // Approve or reject a request.
 export async function reviewLeave(
   leaveId: string,

@@ -18,8 +18,8 @@ export function AmbientTop({ height = 320, intensity = 0.08 }: Props) {
     <LinearGradient
       pointerEvents="none"
       colors={[
-        `rgba(5, 150, 105, ${intensity})`,
-        "rgba(5, 150, 105, 0)",
+        `rgba(10, 10, 10, ${intensity})`,
+        "rgba(10, 10, 10, 0)",
       ]}
       style={[styles.gradient, { height }]}
     />

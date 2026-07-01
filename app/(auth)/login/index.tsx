@@ -39,8 +39,12 @@ export default function LoginScreen() {
       if (profile && profile.accessRole === "staff") {
         setEmployee(profile);
         router.replace("/employee/dashboard");
+      } else if (profile && Platform.OS === "web") {
+        // Managers/admins use the web Manager Portal (which lives in this same app).
+        setEmployee(profile);
+        router.replace("/manager" as never);
       } else if (profile) {
-        // A manager/admin session is restored but the app is staff-only.
+        // A manager/admin session restored on a phone — the mobile app is staff-only.
         signOutUser().catch(() => null);
         setErrorMessage("This is a manager account. Please use the web Manager Portal.");
         setRestoring(false);
@@ -58,8 +62,13 @@ export default function LoginScreen() {
       setErrorMessage("");
       const profile = await signIn(identifier, password, rememberMe);
 
-      // App is staff-only; managers/admins use the web manager portal.
+      // Managers/admins → web Manager Portal. On a phone the app is staff-only.
       if (profile.accessRole !== "staff") {
+        if (Platform.OS === "web") {
+          setEmployee(profile);
+          router.replace("/manager" as never);
+          return;
+        }
         await signOutUser();
         setErrorMessage("This is a manager account. Please use the web Manager Portal to sign in.");
         return;
@@ -108,8 +117,7 @@ export default function LoginScreen() {
         <View style={styles.brandWrap}>
           <KitchenMark size={104} />
           <View style={styles.wordmarkWrap}>
-            <Text style={styles.wordmark}>THYME IN</Text>
-            <Text style={styles.tagline}>Kitchen Crew Time Clock</Text>
+            <Text style={styles.tagline}>PAN-ASIAN BRASSERIE</Text>
           </View>
         </View>
 
@@ -129,7 +137,7 @@ export default function LoginScreen() {
                 style={styles.input}
                 value={identifier}
                 onChangeText={setIdentifier}
-                placeholder="e.g. EMP-1027 or you@thymein.local"
+                placeholder="e.g. EMP-1027 or you@qui.local"
                 placeholderTextColor={Colors.textPlaceholder}
                 autoCapitalize="none"
                 onFocus={() => setFocusedField("id")}
@@ -201,7 +209,7 @@ export default function LoginScreen() {
         </View>
 
         <View style={styles.footerWrap}>
-          <Text style={styles.footerText}>© 2026 Thyme In · v1.0.0</Text>
+          <Text style={styles.footerText}>© 2026 Qui · v1.0.0</Text>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

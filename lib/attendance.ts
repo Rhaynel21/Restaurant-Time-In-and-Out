@@ -131,6 +131,49 @@ export function subscribeTodayAttendance(
   );
 }
 
+// Manager view: real-time stream of EVERY employee's punches for today. Unlike
+// subscribeTodayAttendance this doesn't touch the local cache (which is scoped to
+// the signed-in employee) — it's read-only for the manager dashboard.
+export function subscribeAllTodayAttendance(
+  onChange: (records: AttendanceRecord[]) => void,
+  onError?: (error: Error) => void,
+) {
+  const q = query(collection(db, "attendance"), limit(500));
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const start = startOfTodayMs();
+      const records: AttendanceRecord[] = [];
+      snapshot.forEach((row) => {
+        const record = recordFromRemote(row.id, row.data() as Record<string, unknown>);
+        if (record && record.checkInAt.getTime() >= start) records.push(record);
+      });
+      records.sort((a, b) => b.checkInAt.getTime() - a.checkInAt.getTime());
+      onChange(records);
+    },
+    (error) => onError?.(error as Error),
+  );
+}
+
+// Manager view: all of one employee's records within a given month (0-indexed),
+// fetched straight from Firestore (no local cache).
+export async function getAttendanceForMonth(
+  employeeId: string,
+  year: number,
+  month: number,
+): Promise<AttendanceRecord[]> {
+  const q = query(collection(db, "attendance"), where("employeeId", "==", employeeId), limit(500));
+  const snap = await getDocs(q);
+  const records: AttendanceRecord[] = [];
+  snap.forEach((row) => {
+    const record = recordFromRemote(row.id, row.data() as Record<string, unknown>);
+    if (record && record.checkInAt.getFullYear() === year && record.checkInAt.getMonth() === month) {
+      records.push(record);
+    }
+  });
+  return records.sort((a, b) => a.checkInAt.getTime() - b.checkInAt.getTime());
+}
+
 async function hydrateLocalFromRemote(employeeId: string, maxItems: number) {
   const q = query(collection(db, "attendance"), where("employeeId", "==", employeeId), limit(maxItems));
   const snap = await getDocs(q);

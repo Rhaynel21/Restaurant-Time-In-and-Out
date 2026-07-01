@@ -48,15 +48,32 @@ function buildAuthHeader({ method, uri, username, password, challenge, nc, cnonc
   return `Digest ${parts.join(", ")}`;
 }
 
-// Cache the parsed challenge per host so we can authenticate preemptively on
-// subsequent requests instead of paying the 401 round-trip every poll.
-const challengeCache = new Map();
+// ── Auth circuit breaker ─────────────────────────────────────────────────────
+// This device's "illegal login" lock is hair-trigger: a short burst of auth
+// attempts locks the admin account for ~30 min, and the lock survives reboot.
+// So we HARD-CAP failed auths: after MAX_401 consecutive 401s we stop making any
+// auth'd request for PAUSE_MS, letting the device's own lock time out instead of
+// us hammering it (which would reset the lock forever). A single success clears it.
+const BREAKER = { consecutive401: 0, pausedUntil: 0 };
+const MAX_401 = 2;
+const PAUSE_MS = 35 * 60 * 1000; // 35 min — longer than the device's ~30-min lock,
+// so after a failed burst we stay quiet long enough for the lock to actually clear
+// (attempting during the lock would just reset its timer).
+
+function breakerError() {
+  const mins = Math.ceil((BREAKER.pausedUntil - Date.now()) / 60000);
+  return new Error(
+    `auth paused by circuit breaker (~${mins}m left) after ${MAX_401} failed logins — ` +
+      `avoiding a device lockout. Check HIK_PASS / device lock status.`,
+  );
+}
 
 async function digestFetch(url, options = {}) {
   const { method = "GET", body, username, password, headers = {}, timeoutMs = 15000 } = options;
   const parsed = new URL(url);
   const uri = parsed.pathname + parsed.search;
-  const host = parsed.host;
+
+  if (Date.now() < BREAKER.pausedUntil) throw breakerError();
 
   const doFetch = (authHeader) => {
     const controller = new AbortController();
@@ -69,39 +86,34 @@ async function digestFetch(url, options = {}) {
     }).finally(() => clearTimeout(timer));
   };
 
-  // Try cached challenge first.
-  const cached = challengeCache.get(host);
-  if (cached) {
-    cached.nc += 1;
-    const cnonce = crypto.randomBytes(8).toString("hex");
-    const authHeader = buildAuthHeader({
-      method,
-      uri,
-      username,
-      password,
-      challenge: cached.challenge,
-      nc: cached.nc,
-      cnonce,
-    });
-    const res = await doFetch(authHeader);
-    if (res.status !== 401) return res;
-    challengeCache.delete(host); // stale nonce, fall through to re-challenge
-  }
+  // Track only the FINAL authenticated response for the breaker — the initial
+  // unauthenticated probe returning 401 is the normal Digest challenge, not a
+  // failed login.
+  const settle = (res) => {
+    if (res.status === 401) {
+      BREAKER.consecutive401 += 1;
+      if (BREAKER.consecutive401 >= MAX_401) {
+        BREAKER.pausedUntil = Date.now() + PAUSE_MS;
+        BREAKER.consecutive401 = 0;
+      }
+    } else {
+      BREAKER.consecutive401 = 0; // any success clears the streak
+    }
+    return res;
+  };
 
-  // Unauthenticated request to obtain the challenge.
+  // Always perform the full 401-challenge dance per request: fetch a fresh nonce
+  // (nc=1) and never reuse it — this device rejects reused nonces.
   const probe = await doFetch(null);
-  if (probe.status !== 401) return probe;
+  if (probe.status !== 401) return probe; // no auth required (unexpected) — pass through
 
   const wwwAuth = probe.headers.get("www-authenticate");
-  if (!wwwAuth) return probe;
+  if (!wwwAuth) return settle(probe);
 
   const challenge = parseChallenge(wwwAuth);
-  const nc = 1;
   const cnonce = crypto.randomBytes(8).toString("hex");
-  challengeCache.set(host, { challenge, nc });
-
-  const authHeader = buildAuthHeader({ method, uri, username, password, challenge, nc, cnonce });
-  return doFetch(authHeader);
+  const authHeader = buildAuthHeader({ method, uri, username, password, challenge, nc: 1, cnonce });
+  return settle(await doFetch(authHeader));
 }
 
 module.exports = { digestFetch };

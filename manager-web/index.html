@@ -3,24 +3,24 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Thyme In · Manager Portal</title>
+    <title>Qui · Manager Portal</title>
     <style>
       :root {
-        --primary: #059669;
-        --primary-dark: #047857;
-        --bg: #f2fbf6;
+        --primary: #0A0A0A;
+        --primary-dark: #000000;
+        --bg: #F7F5F0;
         --card: #ffffff;
-        --warm: #e7f7ef;
-        --warm-alt: #daf1e6;
-        --border: #c6e8d5;
-        --hairline: rgba(11, 42, 30, 0.06);
-        --text: #0b2a1e;
-        --muted: #5a7264;
-        --faint: #8fa89a;
-        --danger: #dc2626;
-        --warn-bg: #fffbeb;
-        --warn: #92400e;
-        --success: #16a34a;
+        --warm: #F2EFE9;
+        --warm-alt: #EAE6DD;
+        --border: #E3DED4;
+        --hairline: rgba(10, 10, 10, 0.06);
+        --text: #141414;
+        --muted: #8A8A8A;
+        --faint: #A8A8A8;
+        --danger: #B23A3A;
+        --warn-bg: #F7F2E8;
+        --warn: #6E5526;
+        --success: #2F6B4F;
       }
       * { box-sizing: border-box; }
       body {
@@ -45,19 +45,23 @@
         background: var(--card);
         border-radius: 22px;
         padding: 34px 30px;
-        box-shadow: 0 18px 50px rgba(11, 42, 30, 0.1);
+        box-shadow: 0 18px 50px rgba(10, 10, 10, 0.1);
         border: 1px solid var(--hairline);
       }
       .brand { text-align: center; margin-bottom: 22px; }
       .brand .logo {
-        width: 60px; height: 60px; border-radius: 18px;
-        background: var(--primary); color: #fff;
-        display: inline-flex; align-items: center; justify-content: center;
-        font-size: 28px; margin-bottom: 12px;
+        font-family: Georgia, "Times New Roman", serif;
+        color: var(--text); font-weight: 700;
+        font-size: 56px; line-height: 1; letter-spacing: 1px;
+        margin-bottom: 6px;
       }
-      .brand h1 { margin: 0; font-size: 22px; letter-spacing: 1px; }
+      .brand h1 {
+        margin: 0; font-size: 13px; letter-spacing: 4px; font-weight: 600;
+        text-transform: uppercase; color: var(--muted);
+        font-family: Georgia, "Times New Roman", serif;
+      }
       .brand p { margin: 4px 0 0; color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 2px; }
-      label { display: block; font-size: 12px; font-weight: 600; margin: 14px 0 6px; color: #1e3a2c; }
+      label { display: block; font-size: 12px; font-weight: 600; margin: 14px 0 6px; color: #2A2A2A; }
       input {
         width: 100%; height: 48px; border-radius: 12px;
         border: 1px solid var(--border); background: var(--warm);
@@ -73,32 +77,73 @@
       button.primary:disabled { opacity: 0.6; cursor: default; }
       .error { color: var(--danger); font-size: 13px; margin-top: 12px; text-align: center; font-weight: 600; }
 
-      /* App shell */
-      header.bar {
-        background: #0a3326; color: #ecfdf5;
-        padding: 16px 24px; display: flex; align-items: center; justify-content: space-between;
-        position: sticky; top: 0; z-index: 5;
+      /* App shell — sidebar layout */
+      .shell { display: flex; min-height: 100vh; }
+      .sidebar {
+        width: 256px; flex-shrink: 0; background: #0A0A0A; color: #F7F5F0;
+        display: flex; flex-direction: column;
+        position: fixed; inset: 0 auto 0 0; height: 100vh; z-index: 10;
       }
-      header.bar .who { display: flex; align-items: center; gap: 12px; }
-      header.bar .avatar {
-        width: 38px; height: 38px; border-radius: 50%; background: var(--primary);
-        display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px;
+      .brand-mini { padding: 28px 24px 22px; border-bottom: 1px solid rgba(247,245,240,0.08); }
+      .brand-mini .mark {
+        font-family: Georgia, "Times New Roman", serif; font-size: 38px; font-weight: 700;
+        letter-spacing: 1px; line-height: 1; color: #F7F5F0;
       }
-      header.bar .name { font-weight: 700; font-size: 15px; }
-      header.bar .role { font-size: 12px; color: #b6e3cd; }
-      header.bar button.logout {
-        background: rgba(255,255,255,0.12); color: #ecfdf5; border: 1px solid rgba(255,255,255,0.2);
-        border-radius: 10px; padding: 8px 14px; cursor: pointer; font-size: 13px; font-weight: 600;
+      .brand-mini .sub {
+        margin-top: 6px; font-size: 10px; letter-spacing: 3px; text-transform: uppercase;
+        color: rgba(247,245,240,0.5); font-family: Georgia, "Times New Roman", serif;
       }
-      .container { max-width: 920px; margin: 0 auto; padding: 22px 24px 60px; }
-      .tabs { display: flex; gap: 8px; background: var(--warm); padding: 5px; border-radius: 14px; margin-bottom: 22px; }
-      .tabs button {
-        flex: 1; border: none; background: transparent; padding: 11px; border-radius: 10px;
-        font-size: 14px; font-weight: 600; color: var(--muted); cursor: pointer;
+      .side-nav { flex: 1; padding: 12px; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
+      .side-nav button {
+        display: flex; align-items: center; gap: 13px; width: 100%; text-align: left;
+        border: none; background: transparent; color: rgba(247,245,240,0.68);
+        padding: 12px 14px; border-radius: 11px; font-size: 14px; font-weight: 600; cursor: pointer;
+        transition: background 0.12s, color 0.12s;
       }
-      .tabs button.active { background: #fff; color: var(--text); box-shadow: 0 2px 6px rgba(11,42,30,0.06); }
-      .tabs .count { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 6px;
-        background: var(--danger); color: #fff; border-radius: 9px; font-size: 11px; line-height: 18px; }
+      .side-nav button svg { width: 18px; height: 18px; flex-shrink: 0; stroke-width: 1.7; }
+      .side-nav button:hover { background: rgba(247,245,240,0.07); color: #F7F5F0; }
+      .side-nav button.active { background: #F7F5F0; color: #0A0A0A; }
+      .side-nav .count {
+        margin-left: auto; min-width: 20px; padding: 0 6px; background: var(--danger); color: #fff;
+        border-radius: 9px; font-size: 11px; line-height: 20px; text-align: center; font-weight: 700;
+      }
+      .side-nav button.active .count { background: #0A0A0A; color: #F7F5F0; }
+      .side-user {
+        border-top: 1px solid rgba(247,245,240,0.1); padding: 16px;
+        display: flex; align-items: center; gap: 11px;
+      }
+      .side-user .avatar {
+        width: 38px; height: 38px; border-radius: 50%; background: rgba(247,245,240,0.12);
+        display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; color: #F7F5F0;
+      }
+      .side-user .name { font-weight: 700; font-size: 14px; line-height: 1.2; }
+      .side-user .role { font-size: 11px; color: rgba(247,245,240,0.5); margin-top: 1px; }
+      .side-user button.logout {
+        margin-left: auto; background: rgba(247,245,240,0.1); color: #F7F5F0;
+        border: 1px solid rgba(247,245,240,0.18); border-radius: 9px; padding: 7px 11px;
+        cursor: pointer; font-size: 12px; font-weight: 600;
+      }
+      .side-user button.logout:hover { background: rgba(247,245,240,0.18); }
+      .main { margin-left: 256px; flex: 1; min-width: 0; }
+      .topbar {
+        background: var(--card); border-bottom: 1px solid var(--hairline);
+        padding: 22px 36px; position: sticky; top: 0; z-index: 5;
+      }
+      .topbar h1 { margin: 0; font-size: 21px; font-weight: 700; color: var(--text); letter-spacing: -0.2px; }
+      .topbar p { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
+      .container { max-width: 1040px; margin: 0; padding: 28px 36px 60px; }
+
+      @media (max-width: 860px) {
+        .sidebar {
+          position: static; width: 100%; height: auto; flex-direction: column;
+        }
+        .brand-mini { padding: 18px 22px; }
+        .side-nav { flex-direction: row; flex-wrap: nowrap; overflow-x: auto; padding: 10px; }
+        .side-nav button { width: auto; white-space: nowrap; }
+        .main { margin-left: 0; }
+        .topbar { padding: 18px 20px; }
+        .container { padding: 20px; }
+      }
 
       h2.section { font-size: 13px; text-transform: uppercase; letter-spacing: 1.4px; color: var(--muted); margin: 0 0 14px; }
       .card {
@@ -115,16 +160,16 @@
       .sub { color: var(--faint); font-size: 13px; margin-top: 2px; }
       .badge { padding: 5px 11px; border-radius: 10px; font-size: 12px; font-weight: 700; }
       .badge.pending { background: var(--warn-bg); color: var(--warn); }
-      .badge.approved { background: rgba(22,163,74,0.1); color: var(--success); }
-      .badge.rejected { background: rgba(220,38,38,0.08); color: var(--danger); }
-      .badge.in { background: rgba(22,163,74,0.1); color: var(--success); }
+      .badge.approved { background: rgba(47,107,79,0.1); color: var(--success); }
+      .badge.rejected { background: rgba(178,58,58,0.08); color: var(--danger); }
+      .badge.in { background: rgba(47,107,79,0.1); color: var(--success); }
       .badge.out { background: var(--warm-alt); color: var(--primary-dark); }
       .reason { margin-top: 12px; color: var(--muted); font-size: 14px; line-height: 1.4; }
       .actions { display: flex; gap: 10px; margin-top: 14px; }
       .actions button { flex: 1; height: 42px; border-radius: 11px; font-size: 14px; font-weight: 700; cursor: pointer; border: none; }
       .btn-approve { background: var(--primary); color: #fff; }
       .btn-approve:hover { background: var(--primary-dark); }
-      .btn-reject { background: rgba(220,38,38,0.08); color: var(--danger); border: 1px solid rgba(220,38,38,0.2) !important; }
+      .btn-reject { background: rgba(178,58,58,0.08); color: var(--danger); border: 1px solid rgba(178,58,58,0.2) !important; }
       .empty { text-align: center; color: var(--faint); padding: 50px 0; font-size: 15px; }
       table { width: 100%; border-collapse: collapse; }
       .att-card { padding: 0; overflow: hidden; }
@@ -132,6 +177,102 @@
       th { background: var(--warm); color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
       tr:last-child td { border-bottom: none; }
       .muted-note { color: var(--faint); font-size: 12px; margin-top: 16px; text-align: center; }
+
+      /* Schedule editor */
+      select {
+        width: 100%; height: 46px; border-radius: 12px;
+        border: 1px solid var(--border); background: var(--warm);
+        padding: 0 12px; font-size: 15px; color: var(--text); outline: none;
+      }
+      select:focus { border-color: var(--primary); background: #fff; }
+      .week-row {
+        display: flex; align-items: center; gap: 12px; padding: 10px 0;
+        border-bottom: 1px solid var(--hairline);
+      }
+      .week-row:last-child { border-bottom: none; }
+      .week-day { width: 96px; font-weight: 700; font-size: 14px; }
+      .week-row input[type="time"] {
+        width: 120px; height: 40px; border-radius: 10px; border: 1px solid var(--border);
+        background: var(--warm); padding: 0 10px; font-size: 14px; color: var(--text);
+      }
+      .week-row .dash { color: var(--faint); }
+      .week-row.off input[type="time"] { opacity: 0.4; pointer-events: none; }
+      .chk { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--muted); margin: 0; cursor: pointer; }
+      .chk input { width: auto; height: auto; }
+      .grow-sp { flex: 1; }
+      .ov-add {
+        display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+        margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--hairline);
+      }
+      .ov-add input[type="date"], .ov-add input[type="time"] {
+        height: 40px; border-radius: 10px; border: 1px solid var(--border);
+        background: var(--warm); padding: 0 10px; font-size: 14px; color: var(--text); width: auto;
+      }
+      .ov-add .dash { color: var(--faint); }
+      .btn-add { height: 40px; padding: 0 16px; border: none; border-radius: 10px; background: var(--primary); color: #fff; font-weight: 700; cursor: pointer; }
+      .ov-row { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--hairline); }
+      .ov-row:last-child { border-bottom: none; }
+      .ov-date { font-weight: 700; font-size: 14px; width: 130px; }
+      .ov-shift { flex: 1; color: var(--muted); font-size: 14px; }
+      .ov-del { background: rgba(178,58,58,0.08); color: var(--danger); border: none; border-radius: 8px; width: 30px; height: 30px; cursor: pointer; font-size: 16px; }
+
+      /* DTR */
+      .dtr-controls { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+      .dtr-control { display: flex; flex-direction: column; }
+      .dtr-control label { margin: 0 0 6px; }
+      .dtr-control select, .dtr-control input { width: 220px; }
+      .dtr-control input[type="month"] {
+        height: 46px; border-radius: 12px; border: 1px solid var(--border);
+        background: var(--warm); padding: 0 12px; font-size: 15px; color: var(--text);
+      }
+      .dtr-gen { width: auto; padding: 0 22px; height: 46px; margin-top: 0; }
+      .ghost-btn {
+        height: 46px; padding: 0 18px; border-radius: 12px; cursor: pointer; font-weight: 700; font-size: 14px;
+        background: #fff; color: var(--primary-dark); border: 1px solid var(--border);
+      }
+      .ghost-btn:disabled { opacity: 0.5; cursor: default; }
+      .dtr-sheet { background: #fff; border: 1px solid var(--hairline); border-radius: 16px; padding: 22px; margin-top: 16px; }
+      .dtr-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; flex-wrap: wrap; gap: 12px; }
+      .dtr-head h3 { margin: 0; font-size: 20px; }
+      .dtr-head .meta { color: var(--muted); font-size: 13px; margin-top: 4px; }
+      .dtr-summary { display: flex; gap: 22px; flex-wrap: wrap; }
+      .dtr-summary .item { text-align: right; }
+      .dtr-summary .v { font-size: 20px; font-weight: 700; }
+      .dtr-summary .l { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--faint); }
+      .dtr-table th, .dtr-table td { padding: 8px 10px; font-size: 13px; }
+      .dtr-table td.r, .dtr-table th.r { text-align: right; }
+      .row-rest td { color: var(--faint); background: #FBFAF7; }
+      .row-holiday td { background: #F7F5F0; }
+      .row-absent td { color: var(--danger); }
+      .tag { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 6px; text-transform: uppercase; letter-spacing: 0.4px; }
+      .tag.late { background: rgba(154,123,63,0.12); color: #6E5526; }
+      .tag.hol { background: rgba(26,26,26,0.08); color: #1A1A1A; }
+      .tag.ot { background: rgba(10,10,10,0.08); color: var(--primary-dark); }
+
+      /* Devices & alarms */
+      .dev-row { display: flex; align-items: center; gap: 14px; }
+      .dev-status { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+      .dev-status.online { background: var(--success); box-shadow: 0 0 0 4px rgba(47,107,79,0.15); }
+      .dev-status.offline { background: var(--danger); box-shadow: 0 0 0 4px rgba(178,58,58,0.12); }
+      .dev-meta { color: var(--faint); font-size: 13px; margin-top: 2px; }
+      .pill { padding: 4px 10px; border-radius: 9px; font-size: 12px; font-weight: 700; }
+      .pill.online { background: rgba(47,107,79,0.1); color: var(--success); }
+      .pill.offline { background: rgba(178,58,58,0.08); color: var(--danger); }
+      .alarm { border-left: 3px solid var(--warn); }
+      .alarm.critical { border-left-color: var(--danger); }
+      .alarm .sev { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
+      .alarm.warning .sev { color: var(--warn); }
+      .alarm.critical .sev { color: var(--danger); }
+      .btn-ack { background: var(--warm); color: var(--primary-dark); border: 1px solid var(--border); border-radius: 9px; padding: 7px 13px; cursor: pointer; font-weight: 700; font-size: 13px; }
+
+      @media print {
+        body { background: #fff; }
+        .sidebar, .topbar, .no-print, .muted-note { display: none !important; }
+        .main { margin-left: 0 !important; }
+        .container { max-width: none; padding: 0; }
+        .dtr-sheet { border: none; border-radius: 0; padding: 0; margin: 0; }
+        h2.section { display: none; }
+      }
     </style>
   </head>
   <body>
@@ -139,12 +280,12 @@
     <div id="login" class="login-wrap">
       <div class="login-card">
         <div class="brand">
-          <div class="logo">🍃</div>
-          <h1>THYME IN</h1>
+          <div class="logo">qui</div>
+          <h1>Pan-Asian Brasserie</h1>
           <p>Manager Portal</p>
         </div>
         <label for="identifier">Employee ID or Email</label>
-        <input id="identifier" placeholder="e.g. MGR-001 or manager@thymein.local" autocomplete="username" />
+        <input id="identifier" placeholder="e.g. MGR-001 or manager@qui.local" autocomplete="username" />
         <label for="password">Password</label>
         <input id="password" type="password" placeholder="Your password" autocomplete="current-password" />
         <button class="primary" id="loginBtn">Sign In</button>
@@ -155,24 +296,53 @@
 
     <!-- APP -->
     <div id="app" class="hidden">
-      <header class="bar">
-        <div class="who">
-          <div class="avatar" id="avatar">M</div>
-          <div>
-            <div class="name" id="whoName">Manager</div>
-            <div class="role" id="whoRole">Manager · Thyme In</div>
+      <div class="shell">
+        <aside class="sidebar">
+          <div class="brand-mini">
+            <div class="mark">qui</div>
+            <div class="sub">Manager Portal</div>
           </div>
-        </div>
-        <button class="logout" id="logoutBtn">Log out</button>
-      </header>
-      <div class="container">
-        <div class="tabs">
-          <button id="tabApprovals" class="active" data-tab="approvals">
-            Approvals<span class="count hidden" id="pendingCount">0</span>
-          </button>
-          <button id="tabAttendance" data-tab="attendance">Attendance Today</button>
-          <button id="tabAll" data-tab="all">All Leaves</button>
-        </div>
+          <nav class="side-nav">
+            <button class="active" data-tab="approvals">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 6 9 17l-5-5"/></svg>
+              Approvals<span class="count hidden" id="pendingCount">0</span>
+            </button>
+            <button data-tab="attendance">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+              Attendance
+            </button>
+            <button data-tab="schedules">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>
+              Schedules
+            </button>
+            <button data-tab="dtr">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M19 21H5V3h9l5 5v13Z"/><path d="M14 3v5h5M8 13h8M8 17h6"/></svg>
+              DTR
+            </button>
+            <button data-tab="devices">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12a7 7 0 0 1 14 0v2"/><path d="M8 13a4 4 0 0 1 8 0c0 3 0 5-1 7"/><path d="M12 11a2 2 0 0 1 2 2c0 2 .5 4-1 6"/></svg>
+              Devices<span class="count hidden" id="alarmCount">0</span>
+            </button>
+            <button data-tab="all">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 3 10.5 13.5M21 3l-6.5 18-4-8-8-4L21 3Z"/></svg>
+              Leaves
+            </button>
+          </nav>
+          <div class="side-user">
+            <div class="avatar" id="avatar">M</div>
+            <div class="grow">
+              <div class="name" id="whoName">Manager</div>
+              <div class="role" id="whoRole">Manager · Qui</div>
+            </div>
+            <button class="logout" id="logoutBtn">Log out</button>
+          </div>
+        </aside>
+        <div class="main">
+          <div class="topbar">
+            <h1 id="topTitle">Approvals</h1>
+            <p id="topSubtitle">Pending leave requests awaiting your review</p>
+          </div>
+          <div class="container">
 
         <div id="view-approvals">
           <h2 class="section">Pending Leave Requests</h2>
@@ -191,13 +361,74 @@
           </div>
         </div>
 
+        <div id="view-schedules" class="hidden">
+          <h2 class="section">Employee Schedules</h2>
+          <div class="card">
+            <label for="schedEmployee">Employee</label>
+            <select id="schedEmployee"></select>
+          </div>
+          <div id="schedEditor" class="hidden">
+            <div class="card">
+              <h2 class="section" style="margin-bottom:12px">Weekly Default</h2>
+              <div id="weeklyGrid"></div>
+              <div class="muted-note" style="text-align:left;margin-top:10px">
+                The default shift for each weekday. Toggle “Rest day” for days off.
+              </div>
+            </div>
+            <div class="card">
+              <h2 class="section" style="margin-bottom:12px">Date Overrides</h2>
+              <div id="overrideList"></div>
+              <div class="ov-add">
+                <input type="date" id="ovDate" />
+                <input type="time" id="ovStart" value="09:00" />
+                <span class="dash">–</span>
+                <input type="time" id="ovEnd" value="18:00" />
+                <label class="chk"><input type="checkbox" id="ovOff" /> Rest</label>
+                <button class="btn-add" id="ovAddBtn">Add</button>
+              </div>
+              <div class="muted-note" style="text-align:left;margin-top:10px">
+                Exceptions for specific dates (swapped shifts, one-off rest days). These win over the weekly default.
+              </div>
+            </div>
+            <button class="primary" id="saveSchedBtn">Save Schedule</button>
+            <div id="schedMsg" class="muted-note"></div>
+          </div>
+        </div>
+
+        <div id="view-dtr" class="hidden">
+          <h2 class="section">Daily Time Record</h2>
+          <div class="card dtr-controls no-print">
+            <div class="dtr-control">
+              <label for="dtrEmployee">Employee</label>
+              <select id="dtrEmployee"></select>
+            </div>
+            <div class="dtr-control">
+              <label for="dtrMonth">Month</label>
+              <input type="month" id="dtrMonth" />
+            </div>
+            <button class="primary dtr-gen" id="dtrGenBtn">Generate</button>
+            <button class="ghost-btn" id="dtrPrintBtn" disabled>Print / PDF</button>
+            <button class="ghost-btn" id="dtrCsvBtn" disabled>CSV</button>
+          </div>
+          <div id="dtrOutput"></div>
+        </div>
+
+        <div id="view-devices" class="hidden">
+          <h2 class="section">Biometric Devices</h2>
+          <div id="deviceList"></div>
+          <h2 class="section" style="margin-top:24px">Tamper &amp; Security Alarms</h2>
+          <div id="alarmList"></div>
+        </div>
+
         <div id="view-all" class="hidden">
           <h2 class="section">All Leave Requests</h2>
           <div id="allList"></div>
         </div>
 
-        <div class="muted-note">
-          Real-time · Firestore project <strong>kitchen-in-and-out</strong>
+            <div class="muted-note">
+              Real-time · Firestore project <strong>kitchen-in-and-out</strong>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -210,7 +441,7 @@
       } from "https://esm.sh/firebase@12/auth";
       import {
         getFirestore, collection, query, where, onSnapshot, doc, getDoc, getDocs,
-        updateDoc, limit, serverTimestamp,
+        updateDoc, setDoc, limit, orderBy, serverTimestamp,
       } from "https://esm.sh/firebase@12/firestore";
 
       // Same public config as the mobile app — access is governed by Firestore rules.
@@ -447,14 +678,452 @@
         return String(str).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
       }
 
+      // ── Philippine holidays (mirror of lib/holidays.ts) ──
+      const PH_HOLIDAYS = {};
+      [
+        ["2026-01-01","New Year's Day","regular"],["2026-02-17","Chinese New Year","special"],
+        ["2026-02-25","EDSA People Power","special"],["2026-04-02","Maundy Thursday","regular"],
+        ["2026-04-03","Good Friday","regular"],["2026-04-04","Black Saturday","special"],
+        ["2026-04-09","Araw ng Kagitingan","regular"],["2026-05-01","Labor Day","regular"],
+        ["2026-06-12","Independence Day","regular"],["2026-08-21","Ninoy Aquino Day","special"],
+        ["2026-08-31","National Heroes Day","regular"],["2026-11-01","All Saints' Day","special"],
+        ["2026-11-30","Bonifacio Day","regular"],["2026-12-08","Immaculate Conception","special"],
+        ["2026-12-24","Christmas Eve","special"],["2026-12-25","Christmas Day","regular"],
+        ["2026-12-30","Rizal Day","regular"],["2026-12-31","Last Day of the Year","special"],
+        ["2025-12-25","Christmas Day","regular"],["2025-12-30","Rizal Day","regular"],
+      ].forEach(([d, name, type]) => (PH_HOLIDAYS[d] = { name, type }));
+
+      // ── Employees (shared by Schedules + DTR pickers) ──
+      const WEEKDAYS = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+      const WD_SHORT = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+      let employeesCache = [];
+
+      async function loadEmployees() {
+        const snap = await getDocs(collection(db, "employees"));
+        employeesCache = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => (a.fullName || a.id).localeCompare(b.fullName || b.id));
+        const opts =
+          `<option value="">— Select employee —</option>` +
+          employeesCache
+            .map((e) => `<option value="${e.id}">${escapeHtml(e.fullName || e.id)} (${e.id})</option>`)
+            .join("");
+        $("schedEmployee").innerHTML = opts;
+        $("dtrEmployee").innerHTML = opts;
+      }
+
+      function defaultWeekly() {
+        return WEEKDAYS.map((_, d) => ({ off: d === 0, start: "09:00", end: "18:00" }));
+      }
+      function fmtT(hhmm) {
+        const [h, m] = hhmm.split(":").map(Number);
+        const p = h >= 12 ? "PM" : "AM";
+        const h12 = h % 12 === 0 ? 12 : h % 12;
+        return `${h12}:${String(m).padStart(2, "0")} ${p}`;
+      }
+      function fmtShift(s) {
+        return s.off ? "Rest day" : `${fmtT(s.start)} – ${fmtT(s.end)}`;
+      }
+      function effShift(weekly, overrides, ymd) {
+        if (overrides[ymd]) return overrides[ymd];
+        const [y, m, d] = ymd.split("-").map(Number);
+        return weekly[new Date(y, m - 1, d).getDay()] || { off: true, start: "09:00", end: "18:00" };
+      }
+
+      // ── Schedule editor ──
+      let schedState = null;
+
+      async function loadScheduleFor(employeeId) {
+        const emp = employeesCache.find((e) => e.id === employeeId);
+        const snap = await getDoc(doc(db, "schedules", employeeId));
+        let weekly = defaultWeekly();
+        let overrides = {};
+        if (snap.exists()) {
+          const data = snap.data();
+          if (Array.isArray(data.weekly)) {
+            weekly = WEEKDAYS.map((_, i) => ({
+              off: !!data.weekly[i]?.off,
+              start: data.weekly[i]?.start || "09:00",
+              end: data.weekly[i]?.end || "18:00",
+            }));
+          }
+          if (data.overrides && typeof data.overrides === "object") overrides = { ...data.overrides };
+        }
+        schedState = {
+          employeeId,
+          employeeName: emp?.fullName || employeeId,
+          branchId: emp?.branchId ?? null,
+          branchName: emp?.branchName ?? null,
+          weekly,
+          overrides,
+        };
+        renderWeekly();
+        renderOverrides();
+        $("schedEditor").classList.remove("hidden");
+        $("schedMsg").textContent = "";
+      }
+
+      function renderWeekly() {
+        $("weeklyGrid").innerHTML = schedState.weekly
+          .map(
+            (s, d) => `
+          <div class="week-row ${s.off ? "off" : ""}" data-day="${d}">
+            <div class="week-day">${WEEKDAYS[d]}</div>
+            <input type="time" class="wk-start" value="${s.start}" />
+            <span class="dash">–</span>
+            <input type="time" class="wk-end" value="${s.end}" />
+            <div class="grow-sp"></div>
+            <label class="chk"><input type="checkbox" class="wk-off" ${s.off ? "checked" : ""}/> Rest day</label>
+          </div>`,
+          )
+          .join("");
+        // Live dim of time inputs when "Rest day" toggles.
+        document.querySelectorAll("#weeklyGrid .wk-off").forEach((box) => {
+          box.addEventListener("change", (e) =>
+            e.target.closest(".week-row").classList.toggle("off", e.target.checked),
+          );
+        });
+      }
+
+      function readWeeklyFromDom() {
+        document.querySelectorAll("#weeklyGrid .week-row").forEach((row) => {
+          const d = +row.dataset.day;
+          schedState.weekly[d] = {
+            off: row.querySelector(".wk-off").checked,
+            start: row.querySelector(".wk-start").value || "09:00",
+            end: row.querySelector(".wk-end").value || "18:00",
+          };
+        });
+      }
+
+      function renderOverrides() {
+        const keys = Object.keys(schedState.overrides).sort();
+        $("overrideList").innerHTML = keys.length
+          ? keys
+              .map(
+                (k) => `
+            <div class="ov-row">
+              <div class="ov-date">${fmtDate(k)}</div>
+              <div class="ov-shift">${fmtShift(schedState.overrides[k])}</div>
+              <button class="ov-del" data-ovdel="${k}">×</button>
+            </div>`,
+              )
+              .join("")
+          : `<div class="muted-note" style="margin:0;text-align:left">No date overrides.</div>`;
+      }
+
+      function addOverride() {
+        const date = $("ovDate").value;
+        if (!date) {
+          alert("Pick a date for the override.");
+          return;
+        }
+        schedState.overrides[date] = {
+          off: $("ovOff").checked,
+          start: $("ovStart").value || "09:00",
+          end: $("ovEnd").value || "18:00",
+        };
+        renderOverrides();
+      }
+
+      async function saveScheduleNow() {
+        if (!schedState) return;
+        readWeeklyFromDom();
+        const btn = $("saveSchedBtn");
+        btn.disabled = true;
+        btn.textContent = "Saving...";
+        try {
+          await setDoc(
+            doc(db, "schedules", schedState.employeeId),
+            {
+              employeeId: schedState.employeeId,
+              employeeName: schedState.employeeName,
+              branchId: schedState.branchId,
+              branchName: schedState.branchName,
+              weekly: schedState.weekly,
+              overrides: schedState.overrides,
+              updatedBy: me.fullName,
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true },
+          );
+          $("schedMsg").textContent = "✓ Schedule saved.";
+        } catch (e) {
+          $("schedMsg").textContent = "Failed to save: " + e.message;
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "Save Schedule";
+        }
+      }
+
+      // ── DTR generation ──
+      let lastDtr = null;
+
+      async function generateDtr() {
+        const employeeId = $("dtrEmployee").value;
+        const month = $("dtrMonth").value; // YYYY-MM
+        if (!employeeId || !month) {
+          alert("Select an employee and a month.");
+          return;
+        }
+        const emp = employeesCache.find((e) => e.id === employeeId) || { id: employeeId };
+        const [y, mo] = month.split("-").map(Number);
+
+        const sSnap = await getDoc(doc(db, "schedules", employeeId));
+        let weekly = defaultWeekly();
+        let overrides = {};
+        if (sSnap.exists()) {
+          const data = sSnap.data();
+          if (Array.isArray(data.weekly)) weekly = data.weekly;
+          if (data.overrides) overrides = data.overrides;
+        }
+
+        const aSnap = await getDocs(
+          query(collection(db, "attendance"), where("employeeId", "==", employeeId)),
+        );
+        const byDay = {};
+        aSnap.docs.forEach((d) => {
+          const r = d.data();
+          const ci = tsToDate(r.checkInAt);
+          if (!ci || ci.getFullYear() !== y || ci.getMonth() !== mo - 1) return;
+          const day = ci.getDate();
+          const co = tsToDate(r.checkOutAt);
+          if (!byDay[day]) byDay[day] = { in: ci, out: co };
+          else {
+            if (ci < byDay[day].in) byDay[day].in = ci;
+            if (co && (!byDay[day].out || co > byDay[day].out)) byDay[day].out = co;
+          }
+        });
+
+        const daysInMonth = new Date(y, mo, 0).getDate();
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const rows = [];
+        const totals = { totalMin: 0, present: 0, late: 0, absent: 0 };
+
+        for (let day = 1; day <= daysInMonth; day++) {
+          const ymd = `${y}-${String(mo).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+          const date = new Date(y, mo - 1, day);
+          const shift = effShift(weekly, overrides, ymd);
+          const hol = PH_HOLIDAYS[ymd];
+          const att = byDay[day];
+          let inTxt = "—", outTxt = "—", hrsTxt = "—", cls = "";
+          const tags = [];
+
+          if (att) {
+            totals.present++;
+            inTxt = fmtTime(att.in);
+            outTxt = att.out ? fmtTime(att.out) : "—";
+            const mins = att.out ? Math.max(0, Math.round((att.out - att.in) / 60000)) : 0;
+            totals.totalMin += mins;
+            hrsTxt = (mins / 60).toFixed(2);
+            if (!shift.off) {
+              const [sh, sm] = shift.start.split(":").map(Number);
+              const schedStart = new Date(att.in);
+              schedStart.setHours(sh, sm, 0, 0);
+              if (att.in.getTime() > schedStart.getTime() + 5 * 60000) {
+                totals.late++;
+                tags.push('<span class="tag late">Late</span>');
+              }
+            }
+            if (hol) tags.push(`<span class="tag hol">${escapeHtml(hol.name)}</span>`);
+          } else if (shift.off) {
+            cls = "row-rest";
+            tags.push("Rest day");
+          } else if (hol) {
+            cls = "row-holiday";
+            tags.push(`<span class="tag hol">${escapeHtml(hol.name)}</span>`);
+          } else if (date.getTime() < today.getTime()) {
+            totals.absent++;
+            cls = "row-absent";
+            tags.push("Absent");
+          }
+
+          rows.push({
+            day,
+            dow: WD_SHORT[date.getDay()],
+            sched: fmtShift(shift),
+            inTxt,
+            outTxt,
+            hrsTxt,
+            status: tags.join(" "),
+            cls,
+          });
+        }
+
+        renderDtr(emp, y, mo, rows, totals);
+      }
+
+      function renderDtr(emp, y, mo, rows, totals) {
+        const monthName = new Date(y, mo - 1, 1).toLocaleDateString("en-US", {
+          month: "long",
+          year: "numeric",
+        });
+        lastDtr = { emp, monthName, rows };
+        const hrs = (totals.totalMin / 60).toFixed(2);
+        $("dtrOutput").innerHTML = `
+          <div class="dtr-sheet">
+            <div class="dtr-head">
+              <div>
+                <h3>Daily Time Record</h3>
+                <div class="meta">${escapeHtml(emp.fullName || emp.id)} · ${emp.id}${emp.branchName ? " · " + escapeHtml(emp.branchName) : ""}</div>
+                <div class="meta">${monthName}</div>
+              </div>
+              <div class="dtr-summary">
+                <div class="item"><div class="v">${hrs}</div><div class="l">Total Hours</div></div>
+                <div class="item"><div class="v">${totals.present}</div><div class="l">Present</div></div>
+                <div class="item"><div class="v">${totals.late}</div><div class="l">Late</div></div>
+                <div class="item"><div class="v">${totals.absent}</div><div class="l">Absent</div></div>
+              </div>
+            </div>
+            <table class="dtr-table">
+              <thead>
+                <tr><th>Date</th><th>Day</th><th>Schedule</th><th>Time In</th><th>Time Out</th><th class="r">Hours</th><th>Status</th></tr>
+              </thead>
+              <tbody>
+                ${rows
+                  .map(
+                    (r) => `<tr class="${r.cls}">
+                  <td>${String(r.day).padStart(2, "0")}</td>
+                  <td>${r.dow}</td>
+                  <td>${r.sched}</td>
+                  <td>${r.inTxt}</td>
+                  <td>${r.outTxt}</td>
+                  <td class="r">${r.hrsTxt}</td>
+                  <td>${r.status}</td>
+                </tr>`,
+                  )
+                  .join("")}
+              </tbody>
+            </table>
+          </div>`;
+        $("dtrPrintBtn").disabled = false;
+        $("dtrCsvBtn").disabled = false;
+      }
+
+      function csvCell(v) {
+        const s = String(v);
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      }
+      function exportDtrCsv() {
+        if (!lastDtr) return;
+        const head = ["Date", "Day", "Schedule", "Time In", "Time Out", "Hours", "Status"];
+        const lines = [head.join(",")];
+        lastDtr.rows.forEach((r) => {
+          const status = r.status.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+          lines.push([r.day, r.dow, r.sched, r.inTxt, r.outTxt, r.hrsTxt, status].map(csvCell).join(","));
+        });
+        const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `DTR_${lastDtr.emp.id}_${lastDtr.monthName.replace(/\s+/g, "_")}.csv`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      }
+
+      // ── Devices & alarms (real-time) ──
+      function fmtAgo(date) {
+        if (!date) return "never";
+        const s = Math.round((Date.now() - date.getTime()) / 1000);
+        if (s < 60) return `${s}s ago`;
+        if (s < 3600) return `${Math.round(s / 60)}m ago`;
+        if (s < 86400) return `${Math.round(s / 3600)}h ago`;
+        return date.toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+      }
+
+      function watchDevices() {
+        return onSnapshot(collection(db, "deviceStatus"), (snap) => {
+          const root = $("deviceList");
+          if (snap.empty) {
+            root.innerHTML = `<div class="empty">No devices reporting yet. Start the bridge to see status here.</div>`;
+            return;
+          }
+          root.innerHTML = snap.docs
+            .map((d) => {
+              const v = d.data();
+              const last = tsToDate(v.lastSeenAt);
+              // Treat a device as offline if its own flag says so, or if we
+              // haven't heard a heartbeat in over 2 minutes.
+              const stale = !last || Date.now() - last.getTime() > 120000;
+              const online = v.online && !stale;
+              const q = v.queueDepth || 0;
+              return `<div class="card">
+                <div class="dev-row">
+                  <span class="dev-status ${online ? "online" : "offline"}"></span>
+                  <div class="grow">
+                    <div class="title">${escapeHtml(v.deviceName || d.id)}</div>
+                    <div class="dev-meta">Last seen ${fmtAgo(last)}${q ? ` · ${q} punch(es) queued offline` : ""}${v.lastError && !online ? ` · ${escapeHtml(v.lastError)}` : ""}</div>
+                  </div>
+                  <span class="pill ${online ? "online" : "offline"}">${online ? "Online" : "Offline"}</span>
+                </div>
+              </div>`;
+            })
+            .join("");
+        });
+      }
+
+      function watchAlarms() {
+        return onSnapshot(collection(db, "deviceAlarms"), (snap) => {
+          const items = snap.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .sort((a, b) => (tsToDate(b.at)?.getTime() || 0) - (tsToDate(a.at)?.getTime() || 0));
+          const open = items.filter((a) => !a.acknowledged);
+          const badge = $("alarmCount");
+          badge.textContent = open.length;
+          badge.classList.toggle("hidden", open.length === 0);
+
+          const root = $("alarmList");
+          if (!items.length) {
+            root.innerHTML = `<div class="empty">✅ No tamper or security alarms</div>`;
+            return;
+          }
+          root.innerHTML = items
+            .map((a) => {
+              const sev = a.severity === "critical" ? "critical" : "warning";
+              const icon = sev === "critical" ? "🛑" : "⚠️";
+              return `<div class="card alarm ${sev}" style="${a.acknowledged ? "opacity:0.55" : ""}">
+                <div class="row">
+                  <div class="leave-icon">${icon}</div>
+                  <div class="grow">
+                    <div class="sev">${sev}${a.acknowledged ? " · acknowledged" : ""}</div>
+                    <div class="title">${escapeHtml(a.message || a.type)}</div>
+                    <div class="sub">${escapeHtml(a.deviceName || a.deviceId || "")} · ${fmtAgo(tsToDate(a.at))}</div>
+                  </div>
+                  ${a.acknowledged ? "" : `<button class="btn-ack" data-ack="${a.id}">Acknowledge</button>`}
+                </div>
+              </div>`;
+            })
+            .join("");
+        });
+      }
+
+      async function ackAlarm(id) {
+        try {
+          await updateDoc(doc(db, "deviceAlarms", id), { acknowledged: true, updatedAt: serverTimestamp() });
+        } catch (e) {
+          alert("Failed to acknowledge: " + e.message);
+        }
+      }
+
       // ── Tabs ──
+      const TAB_TITLES = {
+        approvals: ["Approvals", "Pending leave requests awaiting your review"],
+        attendance: ["Attendance", "Today's clock-ins across all branches"],
+        schedules: ["Schedules", "Set each employee's weekly shifts and date overrides"],
+        dtr: ["Daily Time Record", "Generate and export a monthly DTR"],
+        devices: ["Devices", "Biometric terminals and tamper / security alarms"],
+        all: ["Leaves", "Every leave request, any status"],
+      };
       function switchTab(tab) {
-        ["approvals", "attendance", "all"].forEach((t) => {
+        ["approvals", "attendance", "schedules", "dtr", "devices", "all"].forEach((t) => {
           $("view-" + t).classList.toggle("hidden", t !== tab);
         });
-        document.querySelectorAll(".tabs button").forEach((b) => {
+        document.querySelectorAll(".side-nav button").forEach((b) => {
           b.classList.toggle("active", b.dataset.tab === tab);
         });
+        const [title, sub] = TAB_TITLES[tab] || ["", ""];
+        $("topTitle").textContent = title;
+        $("topSubtitle").textContent = sub;
       }
 
       function enterApp() {
@@ -463,7 +1132,11 @@
         $("avatar").textContent = initials(me.fullName);
         $("whoName").textContent = me.fullName;
         $("whoRole").textContent = `${me.role} · ${me.accessRole}`;
-        unsubs.push(watchApprovals(), watchAttendance(), watchAllLeaves());
+        unsubs.push(watchApprovals(), watchAttendance(), watchAllLeaves(), watchDevices(), watchAlarms());
+        // Default the DTR month picker to the current month.
+        const now = new Date();
+        $("dtrMonth").value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+        loadEmployees().catch((e) => console.error("loadEmployees failed", e));
         switchTab("approvals");
       }
 
@@ -471,14 +1144,39 @@
       $("loginBtn").addEventListener("click", doLogin);
       $("password").addEventListener("keydown", (e) => e.key === "Enter" && doLogin());
       $("logoutBtn").addEventListener("click", logout);
-      document.querySelectorAll(".tabs button").forEach((b) =>
+      document.querySelectorAll(".side-nav button").forEach((b) =>
         b.addEventListener("click", () => switchTab(b.dataset.tab)),
       );
       document.addEventListener("click", (e) => {
         const btn = e.target.closest("button[data-act]");
-        if (!btn) return;
-        decide(btn.dataset.id, btn.dataset.act === "approve" ? "approved" : "rejected");
+        if (btn) {
+          decide(btn.dataset.id, btn.dataset.act === "approve" ? "approved" : "rejected");
+          return;
+        }
+        const ack = e.target.closest("button[data-ack]");
+        if (ack) ackAlarm(ack.dataset.ack);
       });
+
+      // Schedules
+      $("schedEmployee").addEventListener("change", (e) => {
+        if (e.target.value) loadScheduleFor(e.target.value);
+        else $("schedEditor").classList.add("hidden");
+      });
+      $("saveSchedBtn").addEventListener("click", saveScheduleNow);
+      $("ovAddBtn").addEventListener("click", addOverride);
+      $("overrideList").addEventListener("click", (e) => {
+        const del = e.target.closest("[data-ovdel]");
+        if (!del || !schedState) return;
+        delete schedState.overrides[del.dataset.ovdel];
+        renderOverrides();
+      });
+
+      // DTR
+      $("dtrGenBtn").addEventListener("click", () =>
+        generateDtr().catch((err) => alert("Failed to generate DTR: " + err.message)),
+      );
+      $("dtrPrintBtn").addEventListener("click", () => window.print());
+      $("dtrCsvBtn").addEventListener("click", exportDtrCsv);
 
       // React to auth state: gate managers/admins in, bounce everyone else.
       onAuthStateChanged(auth, async (user) => {
