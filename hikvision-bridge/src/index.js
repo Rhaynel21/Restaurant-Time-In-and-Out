@@ -28,6 +28,33 @@ function log(...args) {
   console.log(new Date().toISOString(), ...args);
 }
 
+// Minutes-since-midnight for a punch, in the device's local wall clock.
+function minutesOfDay(date) {
+  return date.getHours() * 60 + date.getMinutes();
+}
+
+// Is this punch inside (or near) the scheduled break window? Break-out happens
+// around breakStart; we allow a 30-min lead and let it run to breakEnd + 30 so a
+// slightly-early or slightly-late lunch scan still reads as a break, while an
+// end-of-day scan (well past the window) correctly reads as a clock-out.
+function inBreakWindow(time, brk) {
+  if (!brk.breakStart || !brk.breakEnd) return false;
+  const [sh, sm] = brk.breakStart.split(":").map(Number);
+  const [eh, em] = brk.breakEnd.split(":").map(Number);
+  const t = minutesOfDay(time);
+  return t >= sh * 60 + sm - 30 && t <= eh * 60 + em + 30;
+}
+
+// Classify one punch into a state transition. Break in/out is INFERRED from scan
+// order + the scheduled break window (Option B), since this device reports
+// "checkIn" on every scan and can't tell us the punch type itself.
+//
+//   no open record            → IN         (open a new shift)
+//   open, no break yet:
+//        in break window       → BREAK-OUT  (start lunch)
+//        else                  → OUT        (end of shift)
+//   open, on break (out set, in unset) → BREAK-IN  (back from lunch)
+//   open, break done          → OUT        (end of shift)
 async function processEvent(evt) {
   const emp = await store.resolveEmployee(evt.employeeNo, evt.name);
 
@@ -40,31 +67,23 @@ async function processEvent(evt) {
 
   const open = await store.findOpenRecord(emp.employeeId);
 
-  // Direction: pure toggle on the employee's open shift — open → clock OUT,
-  // none → clock IN. We intentionally IGNORE the device's attendanceStatus: this
-  // model (DS-K1T804AMF) reports "checkIn" on every scan, so trusting it would
-  // make every scan an IN and a clock-out would never register.
-  const direction = open ? "out" : "in";
-
-  if (direction === "out") {
-    if (!open) {
-      // Device said check-out but there's nothing open — treat as a fresh in
-      // so we never silently drop a punch.
-      const id = await store.writeCheckIn(emp, evt.time);
-      log(`▸ IN  ${emp.employeeId} (${emp.name}) [no open record, coerced] → ${id}`);
-    } else {
-      const { totalMinutes } = await store.writeCheckOut(open, evt.time);
-      log(`◂ OUT ${emp.employeeId} (${emp.name}) → ${open.id} (${totalMinutes} min)`);
-    }
-  } else {
-    if (open) {
-      // Already clocked in — a second "in" usually means a missed checkout.
-      // Close the old shift first, then open a new one.
-      await store.writeCheckOut(open, evt.time);
-      log(`  (auto-closed stale open shift ${open.id} for ${emp.employeeId})`);
-    }
+  if (!open) {
     const id = await store.writeCheckIn(emp, evt.time);
     log(`▸ IN  ${emp.employeeId} (${emp.name}) → ${id}`);
+  } else {
+    const onBreak = open.breakOutAt && !open.breakInAt;
+    const breakDone = open.breakOutAt && open.breakInAt;
+
+    if (onBreak) {
+      await store.writeBreakIn(open, evt.time);
+      log(`↩ BRK-IN  ${emp.employeeId} (${emp.name}) → ${open.id}`);
+    } else if (!breakDone && inBreakWindow(evt.time, await store.getScheduleBreak(emp.employeeId))) {
+      await store.writeBreakOut(open, evt.time);
+      log(`↪ BRK-OUT ${emp.employeeId} (${emp.name}) → ${open.id}`);
+    } else {
+      const { totalMinutes } = await store.writeCheckOut(open, evt.time);
+      log(`◂ OUT ${emp.employeeId} (${emp.name}) → ${open.id} (${totalMinutes} min worked)`);
+    }
   }
 
   lastPunchByEmployee.set(emp.employeeId, evt.time.getTime());

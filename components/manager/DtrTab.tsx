@@ -6,6 +6,7 @@ import { Colors } from "@/constants/theme";
 import { getAttendanceForMonth } from "@/lib/attendance";
 import { Dtr, buildDtr, formatClock, formatHours, statusLabel } from "@/lib/dtr";
 import { EmployeeSummary, subscribeEmployees } from "@/lib/employees";
+import { inScope } from "@/lib/org";
 import { getSchedule } from "@/lib/schedules";
 
 function currentMonthValue() {
@@ -13,8 +14,9 @@ function currentMonthValue() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-export function DtrTab() {
-  const [employees, setEmployees] = useState<EmployeeSummary[]>([]);
+export function DtrTab({ allowed }: { allowed: Set<string> | null }) {
+  const [allEmployees, setAllEmployees] = useState<EmployeeSummary[]>([]);
+  const employees = allEmployees.filter((e) => inScope(e.branchId, allowed));
   const [employeeId, setEmployeeId] = useState<string | null>(null);
   const [month, setMonth] = useState(currentMonthValue());
   const [dtr, setDtr] = useState<Dtr | null>(null);
@@ -22,7 +24,7 @@ export function DtrTab() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => subscribeEmployees(setEmployees, () => setEmployees([])), []);
+  useEffect(() => subscribeEmployees(setAllEmployees, () => setAllEmployees([])), []);
 
   const generate = async () => {
     setError("");
@@ -54,7 +56,7 @@ export function DtrTab() {
 
   const exportCsv = () => {
     if (!dtr || !meta || Platform.OS !== "web") return;
-    const head = ["Date", "Day", "Schedule", "Time In", "Time Out", "Hours", "Status"];
+    const head = ["Date", "Day", "Schedule", "Time In", "Time Out", "Break", "Hours", "Status"];
     const lines = [head.join(",")];
     for (const r of dtr.rows) {
       const cells = [
@@ -63,6 +65,7 @@ export function DtrTab() {
         r.scheduleLabel,
         formatClock(r.timeIn),
         formatClock(r.timeOut),
+        r.breakMinutes ? formatHours(r.breakMinutes) : "",
         r.workedMinutes ? formatHours(r.workedMinutes) : "",
         statusLabel(r),
       ];
@@ -137,6 +140,7 @@ export function DtrTab() {
             </View>
             <View style={styles.summary}>
               <Summary value={formatHours(dtr.summary.totalMinutes)} label="Hours" />
+              <Summary value={formatHours(dtr.summary.breakMinutes)} label="Break" />
               <Summary value={String(dtr.summary.present)} label="Present" />
               <Summary value={String(dtr.summary.late)} label="Late" />
               <Summary value={String(dtr.summary.absent)} label="Absent" />
@@ -148,6 +152,7 @@ export function DtrTab() {
             <Text style={[styles.th, styles.cSched]}>Schedule</Text>
             <Text style={[styles.th, styles.cTime]}>In</Text>
             <Text style={[styles.th, styles.cTime]}>Out</Text>
+            <Text style={[styles.th, styles.cBrk]}>Brk</Text>
             <Text style={[styles.th, styles.cHrs]}>Hrs</Text>
             <Text style={[styles.th, styles.cStatus]}>Status</Text>
           </View>
@@ -157,6 +162,7 @@ export function DtrTab() {
               <Text style={[styles.td, styles.cSched]}>{r.scheduleLabel}</Text>
               <Text style={[styles.td, styles.cTime]}>{formatClock(r.timeIn)}</Text>
               <Text style={[styles.td, styles.cTime]}>{formatClock(r.timeOut)}</Text>
+              <Text style={[styles.td, styles.cBrk]}>{r.breakMinutes ? formatHours(r.breakMinutes) : "—"}</Text>
               <Text style={[styles.td, styles.cHrs]}>{r.workedMinutes ? formatHours(r.workedMinutes) : "—"}</Text>
               <Text style={[styles.td, styles.cStatus, statusColor(r.status, r.late)]}>{statusLabel(r)}</Text>
             </View>
@@ -226,6 +232,7 @@ const styles = StyleSheet.create({
   cDate: { width: 76, fontVariant: ["tabular-nums"] },
   cSched: { flex: 1, minWidth: 0 },
   cTime: { width: 78, fontVariant: ["tabular-nums"] },
+  cBrk: { width: 42, fontVariant: ["tabular-nums"], textAlign: "right", color: Colors.textMuted },
   cHrs: { width: 48, fontVariant: ["tabular-nums"], textAlign: "right" },
   cStatus: { flex: 1.2, minWidth: 0 },
 });

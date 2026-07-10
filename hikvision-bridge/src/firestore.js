@@ -41,6 +41,34 @@ async function resolveEmployee(employeeNo, deviceName) {
   return { employeeId, name: name || "Employee", branchId, branchName };
 }
 
+// Cache of each employee's scheduled meal-break window, so we don't read the
+// schedule doc on every punch. Entries expire so schedule edits still propagate.
+const breakCache = new Map(); // employeeId -> { window, fetchedMs }
+const BREAK_TTL_MS = 5 * 60 * 1000;
+
+// Read an employee's scheduled break window { breakStart, breakEnd } (HH:MM) from
+// `schedules/{id}`. Returns nulls when no break is set. Used to classify a punch
+// as a break-out vs a clock-out.
+async function getScheduleBreak(employeeId) {
+  const cached = breakCache.get(employeeId);
+  if (cached && Date.now() - cached.fetchedMs < BREAK_TTL_MS) return cached.window;
+  let window = { breakStart: null, breakEnd: null };
+  try {
+    const snap = await db.collection("schedules").doc(employeeId).get();
+    if (snap.exists) {
+      const data = snap.data();
+      window = {
+        breakStart: typeof data.breakStart === "string" ? data.breakStart : null,
+        breakEnd: typeof data.breakEnd === "string" ? data.breakEnd : null,
+      };
+    }
+  } catch (err) {
+    console.warn(`[firestore] schedule break lookup failed for ${employeeId}: ${err.message}`);
+  }
+  breakCache.set(employeeId, { window, fetchedMs: Date.now() });
+  return window;
+}
+
 // The currently-open (no checkout) attendance record for an employee, if any.
 async function findOpenRecord(employeeId) {
   const snap = await db
@@ -97,6 +125,8 @@ function checkInDoc(emp, time) {
     branchName: emp.branchName,
     checkInAt: Timestamp.fromDate(time),
     checkOutAt: null,
+    breakOutAt: null,
+    breakInAt: null,
     checkInLocation: null,
     checkOutLocation: null,
     totalMinutes: null,
@@ -104,6 +134,44 @@ function checkInDoc(emp, time) {
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   };
+}
+
+// A punch that starts the meal break.
+function breakOutDoc(time) {
+  return {
+    breakOutAt: Timestamp.fromDate(time),
+    source: "hikvision",
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+}
+
+async function writeBreakOut(openRecord, time) {
+  try {
+    await db.collection("attendance").doc(openRecord.id).set(breakOutDoc(time), { merge: true });
+  } catch (err) {
+    if (!isOffline(err)) throw err;
+    queue.enqueue({ kind: "breakout", recordId: openRecord.id, timeMs: time.getTime() });
+  }
+  return openRecord.id;
+}
+
+// A punch that ends the meal break.
+function breakInDoc(time) {
+  return {
+    breakInAt: Timestamp.fromDate(time),
+    source: "hikvision",
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+}
+
+async function writeBreakIn(openRecord, time) {
+  try {
+    await db.collection("attendance").doc(openRecord.id).set(breakInDoc(time), { merge: true });
+  } catch (err) {
+    if (!isOffline(err)) throw err;
+    queue.enqueue({ kind: "breakin", recordId: openRecord.id, timeMs: time.getTime() });
+  }
+  return openRecord.id;
 }
 
 async function writeCheckIn(emp, time) {
@@ -128,12 +196,21 @@ function checkOutDoc(time, totalMinutes) {
   };
 }
 
+function breakMillis(record) {
+  const bo = record.breakOutAt && record.breakOutAt.toMillis ? record.breakOutAt.toMillis() : 0;
+  const bi = record.breakInAt && record.breakInAt.toMillis ? record.breakInAt.toMillis() : 0;
+  return bo && bi && bi > bo ? bi - bo : 0;
+}
+
 async function writeCheckOut(openRecord, time) {
   const checkInMs =
     openRecord.checkInAt && openRecord.checkInAt.toMillis
       ? openRecord.checkInAt.toMillis()
       : time.getTime();
-  const totalMinutes = Math.max(0, Math.round((time.getTime() - checkInMs) / 60000));
+  // Net worked time = gross shift minus any recorded (unpaid) meal break.
+  const grossMinutes = Math.max(0, Math.round((time.getTime() - checkInMs) / 60000));
+  const breakMinutes = Math.round(breakMillis(openRecord) / 60000);
+  const totalMinutes = Math.max(0, grossMinutes - breakMinutes);
 
   try {
     await db.collection("attendance").doc(openRecord.id).set(checkOutDoc(time, totalMinutes), { merge: true });
@@ -155,6 +232,10 @@ async function replayOp(op) {
       .collection("attendance")
       .doc(op.recordId)
       .set(checkOutDoc(new Date(op.timeMs), op.totalMinutes), { merge: true });
+  } else if (op.kind === "breakout") {
+    await db.collection("attendance").doc(op.recordId).set(breakOutDoc(new Date(op.timeMs)), { merge: true });
+  } else if (op.kind === "breakin") {
+    await db.collection("attendance").doc(op.recordId).set(breakInDoc(new Date(op.timeMs)), { merge: true });
   }
 }
 
@@ -213,9 +294,12 @@ async function recordAlarm(alarm) {
 
 module.exports = {
   resolveEmployee,
+  getScheduleBreak,
   findOpenRecord,
   findLatestRecord,
   writeCheckIn,
+  writeBreakOut,
+  writeBreakIn,
   writeCheckOut,
   flushQueue,
   heartbeat,

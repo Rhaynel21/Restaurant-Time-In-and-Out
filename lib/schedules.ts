@@ -24,6 +24,11 @@ export type Schedule = {
   branchName: string | null;
   weekly: Shift[]; // length 7, index 0 = Sunday … 6 = Saturday
   overrides: Record<string, Shift>; // YYYY-MM-DD -> shift
+  // One unpaid meal break window (HH:MM), applied to every working day. The
+  // biometric bridge uses this window to classify break-out / break-in punches,
+  // and the DTR deducts the break from worked hours. null = no scheduled break.
+  breakStart: string | null;
+  breakEnd: string | null;
   updatedAt: Date | null;
   updatedBy: string | null;
 };
@@ -75,12 +80,15 @@ function toSchedule(employeeId: string, data: Record<string, unknown>): Schedule
     branchName: typeof data.branchName === "string" ? data.branchName : null,
     weekly,
     overrides,
+    breakStart: typeof data.breakStart === "string" ? data.breakStart : null,
+    breakEnd: typeof data.breakEnd === "string" ? data.breakEnd : null,
     updatedAt: timestampToDate(data.updatedAt),
     updatedBy: typeof data.updatedBy === "string" ? data.updatedBy : null,
   };
 }
 
-// An empty/default schedule for an employee who has none saved yet.
+// An empty/default schedule for an employee who has none saved yet. Defaults to
+// a 12:00–13:00 unpaid meal break, the common restaurant lunch window.
 export function emptySchedule(employeeId: string, employeeName = employeeId): Schedule {
   return {
     employeeId,
@@ -89,9 +97,26 @@ export function emptySchedule(employeeId: string, employeeName = employeeId): Sc
     branchName: null,
     weekly: defaultWeekly(),
     overrides: {},
+    breakStart: "12:00",
+    breakEnd: "13:00",
     updatedAt: null,
     updatedBy: null,
   };
+}
+
+// Length of the scheduled meal break in minutes (0 when no break is set).
+export function scheduleBreakMinutes(schedule: Pick<Schedule, "breakStart" | "breakEnd">): number {
+  if (!schedule.breakStart || !schedule.breakEnd) return 0;
+  const [sh, sm] = schedule.breakStart.split(":").map(Number);
+  const [eh, em] = schedule.breakEnd.split(":").map(Number);
+  const mins = eh * 60 + em - (sh * 60 + sm);
+  return mins > 0 ? mins : 0;
+}
+
+// "12:00 PM – 1:00 PM" or "No break".
+export function formatBreak(schedule: Pick<Schedule, "breakStart" | "breakEnd">): string {
+  if (!schedule.breakStart || !schedule.breakEnd) return "No break";
+  return `${formatTime12(schedule.breakStart)} – ${formatTime12(schedule.breakEnd)}`;
 }
 
 // The shift that actually applies on a given date: an override wins, otherwise
@@ -161,7 +186,10 @@ export async function getSchedule(employeeId: string): Promise<Schedule> {
 
 // Create or update a schedule (used by managers/admins).
 export async function saveSchedule(
-  schedule: Pick<Schedule, "employeeId" | "employeeName" | "branchId" | "branchName" | "weekly" | "overrides">,
+  schedule: Pick<
+    Schedule,
+    "employeeId" | "employeeName" | "branchId" | "branchName" | "weekly" | "overrides" | "breakStart" | "breakEnd"
+  >,
   updatedBy: string,
 ) {
   await setDoc(
@@ -173,6 +201,8 @@ export async function saveSchedule(
       branchName: schedule.branchName,
       weekly: schedule.weekly,
       overrides: schedule.overrides,
+      breakStart: schedule.breakStart ?? null,
+      breakEnd: schedule.breakEnd ?? null,
       updatedBy,
       updatedAt: serverTimestamp(),
     },

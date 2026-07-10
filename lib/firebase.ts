@@ -2,6 +2,7 @@ import ReactNativeAsyncStorage from "@react-native-async-storage/async-storage";
 import { getApp, getApps, initializeApp } from "firebase/app";
 import { Auth, getAuth, initializeAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
 import { Platform } from "react-native";
 
 // Firebase web config. The apiKey here is NOT a secret — access to your data is
@@ -43,3 +44,4 @@ function resolveAuth(): Auth {
 
 export const db = getFirestore(app);
 export const auth = resolveAuth();
+export const storage = getStorage(app);

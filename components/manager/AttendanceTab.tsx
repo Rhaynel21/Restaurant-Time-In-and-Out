@@ -4,14 +4,16 @@ import { StyleSheet, Text, View } from "react-native";
 import { Badge, Card, EmptyState, SectionTitle } from "@/components/manager/ui";
 import { Colors } from "@/constants/theme";
 import { AttendanceRecord, subscribeAllTodayAttendance } from "@/lib/attendance";
+import { inScope } from "@/lib/org";
 
 function fmt(value: Date | null) {
   return value ? value.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }) : "—";
 }
 
-export function AttendanceTab() {
-  const [rows, setRows] = useState<AttendanceRecord[]>([]);
-  useEffect(() => subscribeAllTodayAttendance(setRows, () => setRows([])), []);
+export function AttendanceTab({ allowed }: { allowed: Set<string> | null }) {
+  const [allRows, setAllRows] = useState<AttendanceRecord[]>([]);
+  useEffect(() => subscribeAllTodayAttendance(setAllRows, () => setAllRows([])), []);
+  const rows = allRows.filter((r) => inScope(r.branchId, allowed));
 
   return (
     <View>
@@ -28,7 +30,10 @@ export function AttendanceTab() {
             <Text style={[styles.th, styles.cStatus]}>Status</Text>
           </View>
           {rows.map((r, i) => {
-            const onShift = !r.checkOutAt;
+            const onBreak = !r.checkOutAt && !!r.breakOutAt && !r.breakInAt;
+            const onShift = !r.checkOutAt && !onBreak;
+            const status = onBreak ? "On break" : onShift ? "On shift" : "Done";
+            const tone = onBreak ? "warning" : onShift ? "in" : "out";
             return (
               <View key={r.id} style={[styles.tr, i < rows.length - 1 && styles.trBorder]}>
                 <Text style={[styles.td, styles.cName]} numberOfLines={1}>{r.employeeName}</Text>
@@ -36,7 +41,7 @@ export function AttendanceTab() {
                 <Text style={[styles.td, styles.cTime]}>{fmt(r.checkInAt)}</Text>
                 <Text style={[styles.td, styles.cTime]}>{fmt(r.checkOutAt)}</Text>
                 <View style={styles.cStatus}>
-                  <Badge label={onShift ? "On shift" : "Done"} tone={onShift ? "in" : "out"} />
+                  <Badge label={status} tone={tone} />
                 </View>
               </View>
             );

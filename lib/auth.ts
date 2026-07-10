@@ -14,7 +14,7 @@ import { doc, getDoc, getDocs, collection, limit, query, serverTimestamp, setDoc
 import { EmployeeProfile } from "@/lib/attendance";
 import { auth, db } from "@/lib/firebase";
 
-export type AccessRole = "staff" | "manager" | "admin";
+export type AccessRole = "owner" | "staff" | "manager" | "admin";
 
 export const AUTH_ERRORS = {
   NOT_FOUND: "AUTH_NOT_FOUND",
@@ -44,6 +44,8 @@ function toProfile(employeeId: string, data: EmployeeDoc): EmployeeProfile {
     email: data.email ?? "",
     phone: data.phone ?? "",
     role: data.role ?? "Staff",
+    companyId: data.companyId ?? null,
+    brandId: data.brandId ?? null,
     branchId: data.branchId ?? null,
     branchName: data.branchName ?? null,
     accessRole: (data.accessRole as AccessRole) ?? "staff",
@@ -163,6 +165,8 @@ export async function signUp(input: {
     email,
     phone: input.phone?.trim() ?? "",
     role: input.position?.trim() || "Staff",
+    companyId: null,
+    brandId: null,
     branchId: input.branchId ?? null,
     branchName: input.branchName ?? null,
     accessRole: "staff",

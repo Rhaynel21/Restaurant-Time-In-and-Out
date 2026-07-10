@@ -16,6 +16,9 @@ export type DtrRow = {
   shift: Shift;
   timeIn: Date | null;
   timeOut: Date | null;
+  breakOut: Date | null;
+  breakIn: Date | null;
+  breakMinutes: number;
   workedMinutes: number;
   late: boolean;
   holiday: Holiday | null;
@@ -24,6 +27,7 @@ export type DtrRow = {
 
 export type DtrSummary = {
   totalMinutes: number;
+  breakMinutes: number;
   present: number;
   late: number;
   absent: number;
@@ -47,17 +51,20 @@ export function buildDtr(
   schedule: Schedule,
   records: AttendanceRecord[],
 ): Dtr {
-  // Collapse multiple punches per day into earliest-in / latest-out.
-  const byDay = new Map<number, { in: Date; out: Date | null }>();
+  // Collapse multiple punches per day into earliest-in / latest-out, keeping the
+  // day's break window (break-out / break-in) if the bridge recorded one.
+  const byDay = new Map<number, { in: Date; out: Date | null; breakOut: Date | null; breakIn: Date | null }>();
   for (const r of records) {
     if (r.checkInAt.getFullYear() !== year || r.checkInAt.getMonth() !== month) continue;
     const day = r.checkInAt.getDate();
     const cur = byDay.get(day);
     if (!cur) {
-      byDay.set(day, { in: r.checkInAt, out: r.checkOutAt });
+      byDay.set(day, { in: r.checkInAt, out: r.checkOutAt, breakOut: r.breakOutAt, breakIn: r.breakInAt });
     } else {
       if (r.checkInAt < cur.in) cur.in = r.checkInAt;
       if (r.checkOutAt && (!cur.out || r.checkOutAt > cur.out)) cur.out = r.checkOutAt;
+      if (r.breakOutAt && !cur.breakOut) cur.breakOut = r.breakOutAt;
+      if (r.breakInAt && !cur.breakIn) cur.breakIn = r.breakInAt;
     }
   }
 
@@ -66,7 +73,7 @@ export function buildDtr(
   today.setHours(0, 0, 0, 0);
 
   const rows: DtrRow[] = [];
-  const summary: DtrSummary = { totalMinutes: 0, present: 0, late: 0, absent: 0, restDays: 0 };
+  const summary: DtrSummary = { totalMinutes: 0, breakMinutes: 0, present: 0, late: 0, absent: 0, restDays: 0 };
 
   for (let day = 1; day <= daysInMonth; day += 1) {
     const ymd = `${year}-${pad(month + 1)}-${pad(day)}`;
@@ -77,14 +84,21 @@ export function buildDtr(
 
     let status: DtrStatus = "upcoming";
     let workedMinutes = 0;
+    let breakMinutes = 0;
     let late = false;
 
     if (att) {
       status = "present";
       summary.present += 1;
+      // A recorded break (break-out → break-in) is unpaid and comes off the total.
+      if (att.breakOut && att.breakIn && att.breakIn > att.breakOut) {
+        breakMinutes = Math.round((att.breakIn.getTime() - att.breakOut.getTime()) / 60000);
+      }
       if (att.out) {
-        workedMinutes = Math.max(0, Math.round((att.out.getTime() - att.in.getTime()) / 60000));
+        const gross = Math.max(0, Math.round((att.out.getTime() - att.in.getTime()) / 60000));
+        workedMinutes = Math.max(0, gross - breakMinutes);
         summary.totalMinutes += workedMinutes;
+        summary.breakMinutes += breakMinutes;
       }
       if (!shift.off) {
         const [sh, sm] = shift.start.split(":").map(Number);
@@ -115,6 +129,9 @@ export function buildDtr(
       shift,
       timeIn: att ? att.in : null,
       timeOut: att?.out ?? null,
+      breakOut: att?.breakOut ?? null,
+      breakIn: att?.breakIn ?? null,
+      breakMinutes,
       workedMinutes,
       late,
       holiday,

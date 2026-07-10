@@ -1,0 +1,68 @@
+rules_version = '2';
+
+// Qui / Kitchen-In-And-Out — Firestore security rules.
+//
+// The app signs in with Firebase Auth (Email/Password). Every user of the system
+// is a trusted employee (staff, manager, or admin), so app data is readable and
+// writable by any *signed-in* user. Sign-in itself needs to read the `employees`
+// roster to resolve the caller's profile — that LIST query is why login breaks if
+// these rules are missing/too strict.
+//
+// Tighten later per collection (e.g. gate writes to managers/admins) once roles
+// are stable; keep the `employees` read open to authenticated users so login works.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Employee roster / 201 master — login resolves the profile from here.
+    match /employees/{employeeId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+
+    // Time & attendance, leave requests, schedules.
+    match /attendance/{doc} {
+      allow read, write: if request.auth != null;
+    }
+    match /leaves/{doc} {
+      allow read, write: if request.auth != null;
+    }
+    match /schedules/{doc} {
+      allow read, write: if request.auth != null;
+    }
+
+    // HRIS: employee 201 documents (metadata; files live in Storage).
+    match /employeeDocuments/{doc} {
+      allow read, write: if request.auth != null;
+    }
+
+    // HR memos.
+    match /memos/{doc} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Org hierarchy: Company → Brand → Branch, nested subcollections. Read on
+    // login to resolve scope; the manager portal reads brands/branches via
+    // collectionGroup, which Firestore evaluates at each doc's nested path below.
+    match /companies/{companyId} {
+      allow read, write: if request.auth != null;
+      match /brands/{brandId} {
+        allow read, write: if request.auth != null;
+        match /branches/{branchId} {
+          allow read, write: if request.auth != null;
+        }
+      }
+    }
+    // collectionGroup("brands") / collectionGroup("branches") reads.
+    match /{path=**}/brands/{brandId}   { allow read: if request.auth != null; }
+    match /{path=**}/branches/{branchId} { allow read: if request.auth != null; }
+
+    // Biometric device health + tamper/security alarms (written by the bridge).
+    match /deviceStatus/{doc} {
+      allow read, write: if request.auth != null;
+    }
+    match /deviceAlarms/{doc} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

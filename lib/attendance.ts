@@ -27,9 +27,11 @@ export type EmployeeProfile = {
   email: string;
   phone: string;
   role: string; // job title / position (e.g. "Line Cook")
+  companyId: string | null; // org scope: company assignment
+  brandId: string | null; // org scope: brand assignment
   branchId: string | null;
   branchName: string | null;
-  accessRole: "staff" | "manager" | "admin"; // app access level
+  accessRole: "owner" | "staff" | "manager" | "admin"; // app access level
 };
 
 export type AttendanceRecord = {
@@ -40,6 +42,10 @@ export type AttendanceRecord = {
   branchName: string;
   checkInAt: Date;
   checkOutAt: Date | null;
+  // One unpaid meal break, inferred by the biometric bridge from scan order +
+  // the scheduled break window. Both null when no break was taken/recorded.
+  breakOutAt: Date | null; // left for break
+  breakInAt: Date | null; // returned from break
   totalMinutes: number | null;
 };
 
@@ -65,6 +71,8 @@ function toAttendanceRecord(record: LocalAttendanceRecord): AttendanceRecord {
     branchName: record.branchName,
     checkInAt: record.checkInAt,
     checkOutAt: record.checkOutAt,
+    breakOutAt: null,
+    breakInAt: null,
     totalMinutes: record.totalMinutes,
   };
 }
@@ -81,6 +89,8 @@ function recordFromRemote(id: string, data: Record<string, unknown>): Attendance
     branchName: typeof data.branchName === "string" ? data.branchName : "Unknown branch",
     checkInAt,
     checkOutAt: timestampToDate(data.checkOutAt),
+    breakOutAt: timestampToDate(data.breakOutAt),
+    breakInAt: timestampToDate(data.breakInAt),
     totalMinutes: typeof data.totalMinutes === "number" ? data.totalMinutes : null,
   };
 }
@@ -153,6 +163,19 @@ export function subscribeAllTodayAttendance(
     },
     (error) => onError?.(error as Error),
   );
+}
+
+// Manager view: every employee's punches since a timestamp (e.g. the last 7
+// days), for dashboard trend charts. One-shot read, no local cache.
+export async function getAttendanceSince(sinceMs: number): Promise<AttendanceRecord[]> {
+  const q = query(collection(db, "attendance"), limit(1000));
+  const snap = await getDocs(q);
+  const out: AttendanceRecord[] = [];
+  snap.forEach((row) => {
+    const record = recordFromRemote(row.id, row.data() as Record<string, unknown>);
+    if (record && record.checkInAt.getTime() >= sinceMs) out.push(record);
+  });
+  return out;
 }
 
 // Manager view: all of one employee's records within a given month (0-indexed),
