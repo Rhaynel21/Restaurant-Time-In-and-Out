@@ -4,6 +4,7 @@ import { StyleSheet, Text, View } from "react-native";
 
 import { BarChart, BarDatum } from "@/components/manager/BarChart";
 import { Badge, Card, EmptyState, SectionTitle } from "@/components/manager/ui";
+import { WorkforceTab } from "@/components/manager/WorkforceTab";
 import { ManagerColors as Colors } from "@/constants/theme";
 import { AttendanceRecord, getAttendanceSince, subscribeAllTodayAttendance } from "@/lib/attendance";
 import { inScope } from "@/lib/org";
@@ -109,6 +110,12 @@ export function DashboardTab({
     const h = new Date().getHours();
     return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
   })();
+  const todayLabel = new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
 
   const stats: { label: string; value: number; icon: MdIcon; tone: "in" | "out" | "neutral" | "pending" | "critical" }[] = [
     { label: "On shift now", value: onShift, icon: "account-clock", tone: "in" },
@@ -121,9 +128,12 @@ export function DashboardTab({
 
   return (
     <View>
-      <Text style={styles.hello}>
-        {greeting}, {managerName.split(" ")[0]}
-      </Text>
+      <View style={styles.header}>
+        <Text style={styles.hello}>
+          {greeting}, {managerName.split(" ")[0]}
+        </Text>
+        <Text style={styles.date}>{todayLabel}</Text>
+      </View>
 
       <View style={styles.grid}>
         {stats.map((s) => (
@@ -196,6 +206,13 @@ export function DashboardTab({
           ))}
         </Card>
       )}
+
+      {/* ── Workforce analytics (merged from the old Analytics tab) ── */}
+      <View style={styles.analyticsHeader}>
+        <Text style={styles.analyticsTitle}>Workforce Analytics</Text>
+        <Text style={styles.analyticsSub}>Headcount, tenure, leave, and labor-cost overview</Text>
+      </View>
+      <WorkforceTab allowed={allowed} />
     </View>
   );
 }
@@ -216,7 +233,19 @@ const tileFg: Record<string, string> = {
 };
 
 const styles = StyleSheet.create({
-  hello: { fontSize: 18, fontWeight: "700", color: Colors.textPrimary, letterSpacing: -0.2, marginBottom: 18 },
+  header: { marginBottom: 18 },
+  hello: { fontSize: 20, fontWeight: "800", color: Colors.textPrimary, letterSpacing: -0.3 },
+  date: { fontSize: 13, fontWeight: "600", color: Colors.textFaint, marginTop: 3 },
+
+  analyticsHeader: {
+    marginTop: 30,
+    marginBottom: 16,
+    paddingTop: 22,
+    borderTopWidth: 1,
+    borderTopColor: Colors.hairline,
+  },
+  analyticsTitle: { fontSize: 17, fontWeight: "800", color: Colors.textPrimary, letterSpacing: -0.3 },
+  analyticsSub: { fontSize: 13, fontWeight: "500", color: Colors.textFaint, marginTop: 3 },
 
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginBottom: 22 },
 
