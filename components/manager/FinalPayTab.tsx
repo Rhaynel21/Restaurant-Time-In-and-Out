@@ -167,6 +167,16 @@ export function FinalPayTab({ allowed, companyId }: { allowed: Set<string> | nul
     setTimeout(() => w.print(), 300);
   };
 
+  const printCOE = () => {
+    if (!selected || Platform.OS !== "web" || typeof window === "undefined") return;
+    const w = window.open("", "_blank", "width=820,height=1000");
+    if (!w) return;
+    w.document.write(htmlCOE(selected));
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 300);
+  };
+
   return (
     <View>
       <SectionTitle>Employee</SectionTitle>
@@ -205,6 +215,10 @@ export function FinalPayTab({ allowed, companyId }: { allowed: Set<string> | nul
           <Pressable style={[styles.ghostBtn, !result && styles.ghostDisabled]} disabled={!result} onPress={print2316}>
             <MaterialCommunityIcons name="printer-outline" size={16} color={Colors.primaryDark} />
             <Text style={styles.ghostText}>Print BIR 2316</Text>
+          </Pressable>
+          <Pressable style={[styles.ghostBtn, !selected && styles.ghostDisabled]} disabled={!selected} onPress={printCOE}>
+            <MaterialCommunityIcons name="file-document-outline" size={16} color={Colors.primaryDark} />
+            <Text style={styles.ghostText}>Print COE</Text>
           </Pressable>
         </View>
         <Text style={styles.hint}>
@@ -254,6 +268,41 @@ export function FinalPayTab({ allowed, companyId }: { allowed: Set<string> | nul
       {!result && !loading && <EmptyState icon="account-cash-outline" text="Pick an employee and year, then Compute Final Pay" />}
     </View>
   );
+}
+
+// Printable Certificate of Employment.
+function htmlCOE(e: EmployeeMaster): string {
+  const today = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  const hire = e.hireDate ? new Date(e.hireDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "—";
+  const status = e.status === "inactive" ? "was employed" : "is employed";
+  const untilClause = e.status === "inactive" ? "" : " up to the present";
+  return `<!doctype html><html><head><meta charset="utf-8"><title>COE - ${e.fullName}</title>
+<style>
+  body{font-family:Georgia,'Times New Roman',serif;color:#111;margin:56px;font-size:14px;line-height:1.9}
+  .head{text-align:center;margin-bottom:32px}
+  .company{font-size:20px;font-weight:700;letter-spacing:1px}
+  .tag{font-size:11px;letter-spacing:3px;text-transform:uppercase;color:#555;margin-top:4px}
+  h1{font-size:17px;text-align:center;letter-spacing:2px;text-transform:uppercase;margin:28px 0 24px}
+  p{margin:0 0 16px;text-align:justify}
+  .name{font-weight:700}
+  .sign{margin-top:64px}
+  .sign .line{border-top:1px solid #111;width:260px;padding-top:6px;font-size:12px}
+  .foot{margin-top:40px;font-size:11px;color:#666}
+</style></head><body>
+  <div class="head">
+    <div class="company">Qui &middot; Pan-Asian Brasserie</div>
+    <div class="tag">Human Resources Department</div>
+  </div>
+  <h1>Certificate of Employment</h1>
+  <p>To whom it may concern:</p>
+  <p>This is to certify that <span class="name">${e.fullName}</span> ${status} at Qui &middot; Pan-Asian Brasserie as
+  <span class="name">${e.position || "Staff"}</span>${e.branchName ? ` at ${e.branchName}` : ""}, from
+  <span class="name">${hire}</span>${untilClause}.</p>
+  <p>This certification is issued upon the request of the above-named employee for whatever legal purpose it may serve.</p>
+  <p>Issued this ${today}.</p>
+  <div class="sign"><div class="line">Authorized Representative<br/>Human Resources</div></div>
+  <div class="foot">This is a system-generated certificate.</div>
+</body></html>`;
 }
 
 function Line({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
