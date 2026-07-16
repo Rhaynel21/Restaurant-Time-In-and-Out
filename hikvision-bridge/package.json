@@ -12,6 +12,7 @@
     "seed:org": "node seed-org.js",
     "seed:dummy": "node seed-dummy.js",
     "seed:docs": "node seed-docs.js",
+    "seed:hr": "node seed-hr-extras.js",
     "sync:users": "node sync-users.js"
   },
   "dependencies": {
