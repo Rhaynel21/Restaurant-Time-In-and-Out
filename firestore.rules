@@ -80,5 +80,21 @@ service cloud.firestore {
     match /notifications/{doc} {
       allow read, write: if request.auth != null;
     }
+
+    // Recruitment / ATS: job posts and applicants.
+    match /jobPosts/{doc} {
+      allow read, write: if request.auth != null;
+    }
+    match /applicants/{doc} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Performance management: appraisals and disciplinary records.
+    match /appraisals/{doc} {
+      allow read, write: if request.auth != null;
+    }
+    match /disciplinaryActions/{doc} {
+      allow read, write: if request.auth != null;
+    }
   }
 }

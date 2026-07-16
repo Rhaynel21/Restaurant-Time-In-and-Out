@@ -17,6 +17,8 @@ import { LeavesTab } from "@/components/manager/LeavesTab";
 import { MemoTab } from "@/components/manager/MemoTab";
 import { OrgTab } from "@/components/manager/OrgTab";
 import { PayrollTab } from "@/components/manager/PayrollTab";
+import { PerformanceTab } from "@/components/manager/PerformanceTab";
+import { RecruitmentTab } from "@/components/manager/RecruitmentTab";
 import { RequestsTab } from "@/components/manager/RequestsTab";
 import { SchedulesTab } from "@/components/manager/SchedulesTab";
 import { WorkforceTab } from "@/components/manager/WorkforceTab";
@@ -28,7 +30,7 @@ import { subscribeAlarms } from "@/lib/devices";
 import { subscribePendingLeaves } from "@/lib/leaves";
 import { OrgTree, allowedBranchIds, resolveScope, subscribeOrgTree } from "@/lib/org";
 
-type TabKey = "dashboard" | "analytics" | "attendance" | "dtr" | "schedules" | "employees" | "memo" | "org" | "payroll" | "finalpay" | "documents" | "approvals" | "leaves" | "requests" | "devices" | "audit";
+type TabKey = "dashboard" | "analytics" | "attendance" | "dtr" | "schedules" | "employees" | "memo" | "org" | "payroll" | "finalpay" | "documents" | "approvals" | "leaves" | "requests" | "recruitment" | "performance" | "devices" | "audit";
 type MdIcon = React.ComponentProps<typeof MaterialCommunityIcons>["name"];
 
 const TABS: { key: TabKey; label: string; icon: MdIcon; title: string; subtitle: string }[] = [
@@ -46,6 +48,8 @@ const TABS: { key: TabKey; label: string; icon: MdIcon; title: string; subtitle:
   { key: "approvals", label: "Approvals", icon: "checkbox-marked-circle-outline", title: "Approvals", subtitle: "Pending leave requests awaiting your review" },
   { key: "leaves", label: "Leaves", icon: "airplane", title: "Leaves", subtitle: "Every leave request, any status" },
   { key: "requests", label: "OT / Corrections", icon: "clock-edit-outline", title: "OT & DTR Requests", subtitle: "Approve overtime filings and DTR corrections" },
+  { key: "recruitment", label: "Recruitment", icon: "briefcase-search-outline", title: "Recruitment", subtitle: "Job posts and applicant hiring pipeline" },
+  { key: "performance", label: "Performance", icon: "star-outline", title: "Performance Management", subtitle: "Appraisals, KPIs, and disciplinary records" },
   { key: "devices", label: "Devices", icon: "fingerprint", title: "Devices", subtitle: "Biometric terminals and tamper / security alarms" },
   { key: "audit", label: "Audit Log", icon: "history", title: "Audit Log", subtitle: "Who changed what, and when (record edits, payroll, approvals)" },
 ];
@@ -57,6 +61,7 @@ const NAV_GROUPS: { label: string; keys: TabKey[] }[] = [
   { label: "Time & Attendance", keys: ["attendance", "dtr", "schedules"] },
   { label: "Payroll & Compensation", keys: ["payroll", "finalpay"] },
   { label: "People", keys: ["employees", "org", "documents"] },
+  { label: "Talent", keys: ["recruitment", "performance"] },
   { label: "Leave", keys: ["approvals", "leaves", "requests"] },
   { label: "Communication", keys: ["memo"] },
   { label: "System", keys: ["devices", "audit"] },
@@ -155,6 +160,8 @@ export default function ManagerPortal() {
       {tab === "audit" && <AuditTab />}
       {tab === "leaves" && <LeavesTab allowed={allowed} />}
       {tab === "requests" && <RequestsTab reviewerName={employee.fullName} allowed={allowed} />}
+      {tab === "recruitment" && <RecruitmentTab />}
+      {tab === "performance" && <PerformanceTab managerName={employee.fullName} />}
     </>
   );
 

@@ -127,5 +127,21 @@ service cloud.firestore {
       allow update: if signedIn() && resource.data.toEmployeeId == myEmp();
       allow delete: if false;
     }
+
+    // ── Recruitment / ATS: managers+ run hiring; not visible to staff ─────────
+    match /jobPosts/{doc}   { allow read: if isManager(); allow write: if isManager(); }
+    match /applicants/{doc} { allow read: if isManager(); allow write: if isManager(); }
+
+    // ── Performance: managers appraise their staff; discipline is HR/manager ──
+    // Staff may read their OWN finalized appraisal; drafts stay internal.
+    match /appraisals/{doc} {
+      allow read:  if isManager()
+        || (signedIn() && resource.data.employeeId == myEmp() && resource.data.status == 'final');
+      allow write: if isManager();
+    }
+    match /disciplinaryActions/{doc} {
+      allow read:  if isManager() || (signedIn() && resource.data.employeeId == myEmp());
+      allow write: if isManager();
+    }
   }
 }
