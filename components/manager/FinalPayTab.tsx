@@ -11,7 +11,7 @@ import { SilBalance, silBalance } from "@/lib/leave-benefits";
 import { subscribeAllLeaves, LeaveRequest } from "@/lib/leaves";
 import { inScope } from "@/lib/org";
 import { subscribePayrollFormula } from "@/lib/payroll-settings";
-import { DEFAULT_FORMULA, PayBasis, PayFormula, PayInputs, PH_RATES_VERSION, computePayslip, peso } from "@/lib/ph-payroll";
+import { DEFAULT_FORMULA, PayBasis, PayFormula, PayInputs, PH_RATES_VERSION, annualWithholdingTax, computePayslip, peso } from "@/lib/ph-payroll";
 import { getSchedule } from "@/lib/schedules";
 
 function round2(n: number): number {
@@ -59,6 +59,8 @@ type Result = {
   silCash: number;
   prorated13: number;
   finalPay: number;
+  annualizedTax: number;
+  taxAdjustment: number; // + = collect more in December; − = refund to employee
 };
 
 export function FinalPayTab({ allowed, companyId }: { allowed: Set<string> | null; companyId: string | null }) {
@@ -138,7 +140,9 @@ export function FinalPayTab({ allowed, companyId }: { allowed: Set<string> | nul
       const silCash = round2(sil.remaining * dailyRate);
       const prorated13 = round2(a.basic / 12);
       const finalPay = round2(a.lastNet + prorated13 + silCash);
-      setResult({ employee: selected, year, annual: a, sil, dailyRate, silCash, prorated13, finalPay });
+      const annualizedTax = annualWithholdingTax(a.taxable);
+      const taxAdjustment = round2(annualizedTax - a.tax);
+      setResult({ employee: selected, year, annual: a, sil, dailyRate, silCash, prorated13, finalPay, annualizedTax, taxAdjustment });
     } catch (e) {
       setError("Failed to compute: " + (e instanceof Error ? e.message : "unknown error"));
     } finally {
@@ -228,8 +232,14 @@ export function FinalPayTab({ allowed, companyId }: { allowed: Set<string> | nul
             <Line label="Pag-IBIG (employee)" value={peso(result.annual.pagibigEE)} />
             <Line label="De-minimis / non-taxable" value={peso(result.annual.deMinimis)} />
             <Line label="Taxable compensation" value={peso(result.annual.taxable)} />
-            <Line label="Tax withheld" value={peso(result.annual.tax)} strong />
-            <Text style={styles.note}>Statutory rates as of {PH_RATES_VERSION}. Verify the annualized tax and 2316 figures with your accountant before filing.</Text>
+            <Line label="Tax withheld (Jan–Dec)" value={peso(result.annual.tax)} />
+            <Line label="Annualized tax due" value={peso(result.annualizedTax)} />
+            <Line
+              label={result.taxAdjustment >= 0 ? "Year-end tax payable (collect in Dec)" : "Year-end tax refund to employee"}
+              value={peso(Math.abs(result.taxAdjustment))}
+              strong
+            />
+            <Text style={styles.note}>Statutory rates as of {PH_RATES_VERSION}. Year-end tax = annualized tax on total taxable income less tax already withheld; verify with your accountant before the December run / 2316 filing.</Text>
           </Card>
         </>
       )}
@@ -297,7 +307,9 @@ function html2316(r: Result): string {
     ${row("Less: Pag-IBIG contributions (employee)", peso(r.annual.pagibigEE))}
     ${row("Less: De-minimis / non-taxable benefits", peso(r.annual.deMinimis))}
     <tr class="total"><td>Taxable compensation income</td><td class="num">${peso(r.annual.taxable)}</td></tr>
-    <tr class="total"><td>Total tax withheld</td><td class="num">${peso(r.annual.tax)}</td></tr>
+    ${row("Tax due (annualized)", peso(r.annualizedTax))}
+    ${row("Tax withheld (Jan–Dec)", peso(r.annual.tax))}
+    <tr class="total"><td>${r.taxAdjustment >= 0 ? "Tax still due (collect)" : "Tax refund to employee"}</td><td class="num">${peso(Math.abs(r.taxAdjustment))}</td></tr>
   </table></div>
 
   <div class="foot">This certificate is a system-generated estimate based on ${r.annual.months} month(s) of recorded payroll and

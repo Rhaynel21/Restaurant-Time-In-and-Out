@@ -138,6 +138,19 @@ export type PayInputs = {
 // the 8-hour day so premiums/holiday pay work either way.
 export type PayBasis = { type: "daily" | "hourly"; dailyRate: number; hourlyRate: number };
 
+// BIR withholding tax — TRAIN law ANNUAL table (for year-end annualization).
+// The employer trues up the year's withholding against the tax on total annual
+// taxable compensation, refunding/collecting the difference in December.
+export function annualWithholdingTax(annualTaxable: number): number {
+  const t = annualTaxable;
+  if (t <= 250000) return 0;
+  if (t <= 400000) return round2((t - 250000) * 0.15);
+  if (t <= 800000) return round2(22500 + (t - 400000) * 0.2);
+  if (t <= 2000000) return round2(102500 + (t - 800000) * 0.25);
+  if (t <= 8000000) return round2(402500 + (t - 2000000) * 0.3);
+  return round2(2202500 + (t - 8000000) * 0.35);
+}
+
 export type Payslip = {
   // Earnings
   daysPresent: number;
