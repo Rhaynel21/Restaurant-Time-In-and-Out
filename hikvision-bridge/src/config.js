@@ -31,11 +31,27 @@ function loadEmployeeMap() {
   }
 }
 
+// Live simulation mode (tri-state):
+//   "on"   — always simulate (SIMULATE=1/true/on/yes), no device needed
+//   "off"  — never simulate (SIMULATE=0/false/off/no); fail if device is missing
+//   "auto" — try the device; fall back to simulation if it can't be reached
+function simulateMode() {
+  const v = (process.env.SIMULATE || "").trim().toLowerCase();
+  if (["1", "true", "on", "yes"].includes(v)) return "on";
+  if (["0", "false", "off", "no"].includes(v)) return "off";
+  return "auto";
+}
+
 const config = {
-  // Device / network
-  deviceBaseUrl: required("HIK_HOST").replace(/\/+$/, ""), // e.g. http://192.168.1.64
-  username: required("HIK_USER"),
-  password: required("HIK_PASS"),
+  // Device / network. Optional so the bridge can start in simulate mode with no
+  // .env at all; device mode validates these before it polls.
+  deviceBaseUrl: optional("HIK_HOST", "").replace(/\/+$/, ""), // e.g. http://192.168.1.64
+  username: optional("HIK_USER", ""),
+  password: optional("HIK_PASS", ""),
+
+  // ── Live simulation ──
+  simulate: simulateMode(),
+  simulateTickMs: Number(optional("SIMULATE_TICK_MS", "8000")),
 
   // Polling
   pollIntervalMs: Number(optional("POLL_INTERVAL_MS", "5000")),

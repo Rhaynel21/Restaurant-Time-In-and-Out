@@ -10,17 +10,15 @@ import { OrgTree, Scope, subscribeOrgTree } from "@/lib/org";
 
 const ACCESS_ROLES: AccessRole[] = ["owner", "admin", "manager", "staff"];
 
-function initials(name: string) {
-  return name.split(" ").slice(0, 2).map((p) => p[0]).join("").toUpperCase() || "?";
-}
-
 function fmtDate(d: Date | null) {
   if (!d) return "—";
   return `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}/${d.getFullYear()}`;
 }
 
 // Directory table columns (toggleable via "View"). `text` feeds the Excel export.
-type ColKey = "firstName" | "lastName" | "email" | "position" | "department" | "branch" | "role" | "status" | "createdAt";
+type ColKey =
+  | "firstName" | "lastName" | "email" | "position" | "department" | "branch" | "role" | "status" | "createdAt"
+  | "sss" | "philhealth" | "pagibig" | "tin";
 const COLUMNS: { key: ColKey; label: string; width: number; text: (e: EmployeeMaster) => string }[] = [
   { key: "firstName", label: "First Name", width: 140, text: (e) => e.firstName || e.fullName },
   { key: "lastName", label: "Last Name", width: 130, text: (e) => e.lastName },
@@ -31,6 +29,10 @@ const COLUMNS: { key: ColKey; label: string; width: number; text: (e: EmployeeMa
   { key: "role", label: "Role", width: 110, text: (e) => e.accessRole },
   { key: "status", label: "Status", width: 100, text: (e) => e.status },
   { key: "createdAt", label: "Created At", width: 120, text: (e) => fmtDate(e.createdAt) },
+  { key: "sss", label: "SSS", width: 140, text: (e) => e.sss },
+  { key: "philhealth", label: "PhilHealth", width: 150, text: (e) => e.philhealth },
+  { key: "pagibig", label: "Pag-IBIG", width: 150, text: (e) => e.pagibig },
+  { key: "tin", label: "TIN", width: 150, text: (e) => e.tin },
 ];
 const DEFAULT_VISIBLE: ColKey[] = ["firstName", "lastName", "email", "position", "branch", "status"];
 const ROWS_OPTIONS = [10, 20, 50];
@@ -294,6 +296,69 @@ export function EmployeesTab({ managerName, scope }: { managerName: string; scop
           </View>
         </Card>
 
+        {/* ── Personal details ── */}
+        <SectionTitle>Personal Details</SectionTitle>
+        <Card>
+          <View style={styles.formGrid}>
+            <Field label="Birth date" grow>
+              <TextInput style={styles.input} value={e.birthDate ?? ""} onChangeText={(t) => patch({ birthDate: t || null })} placeholder="YYYY-MM-DD" placeholderTextColor={Colors.textPlaceholder} />
+            </Field>
+            <Field label="Gender" grow>
+              <View style={styles.segRow}>
+                {(["male", "female", "other"] as const).map((g) => (
+                  <Pressable key={g} style={[styles.seg, e.gender === g && styles.segOn]} onPress={() => patch({ gender: e.gender === g ? "" : g })}>
+                    <Text style={[styles.segText, e.gender === g && styles.segTextOn]}>{g}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </Field>
+          </View>
+
+          <Field label="Civil status">
+            <View style={styles.segRow}>
+              {(["single", "married", "widowed", "separated"] as const).map((c) => (
+                <Pressable key={c} style={[styles.seg, e.civilStatus === c && styles.segOn]} onPress={() => patch({ civilStatus: e.civilStatus === c ? "" : c })}>
+                  <Text style={[styles.segText, e.civilStatus === c && styles.segTextOn]}>{c}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </Field>
+
+          <Field label="Address">
+            <TextInput style={[styles.input, styles.inputMultiline]} value={e.address} multiline onChangeText={(t) => patch({ address: t })} placeholder="House no., street, barangay, city, province" placeholderTextColor={Colors.textPlaceholder} />
+          </Field>
+
+          <View style={styles.formGrid}>
+            <Field label="Emergency contact — name" grow>
+              <TextInput style={styles.input} value={e.emergencyContactName} onChangeText={(t) => patch({ emergencyContactName: t })} placeholder="Maria Dela Cruz" placeholderTextColor={Colors.textPlaceholder} />
+            </Field>
+            <Field label="Emergency contact — phone" grow>
+              <TextInput style={styles.input} value={e.emergencyContactPhone} keyboardType="phone-pad" onChangeText={(t) => patch({ emergencyContactPhone: t })} placeholder="0917 000 0000" placeholderTextColor={Colors.textPlaceholder} />
+            </Field>
+          </View>
+        </Card>
+
+        {/* ── Government IDs ── */}
+        <SectionTitle>Government IDs</SectionTitle>
+        <Card>
+          <View style={styles.formGrid}>
+            <Field label="SSS no." grow>
+              <TextInput style={styles.input} value={e.sss} onChangeText={(t) => patch({ sss: t })} placeholder="00-0000000-0" placeholderTextColor={Colors.textPlaceholder} />
+            </Field>
+            <Field label="PhilHealth no." grow>
+              <TextInput style={styles.input} value={e.philhealth} onChangeText={(t) => patch({ philhealth: t })} placeholder="00-000000000-0" placeholderTextColor={Colors.textPlaceholder} />
+            </Field>
+          </View>
+          <View style={styles.formGrid}>
+            <Field label="Pag-IBIG no." grow>
+              <TextInput style={styles.input} value={e.pagibig} onChangeText={(t) => patch({ pagibig: t })} placeholder="0000-0000-0000" placeholderTextColor={Colors.textPlaceholder} />
+            </Field>
+            <Field label="TIN" grow>
+              <TextInput style={styles.input} value={e.tin} onChangeText={(t) => patch({ tin: t })} placeholder="000-000-000-000" placeholderTextColor={Colors.textPlaceholder} />
+            </Field>
+          </View>
+        </Card>
+
         <View style={styles.formActions}>
           {!isNew && (
             <Pressable style={styles.deleteBtn} disabled={saving} onPress={remove}>
@@ -454,7 +519,14 @@ export function EmployeesTab({ managerName, scope }: { managerName: string; scop
                 <View style={[styles.th, { width: 52 }]} />
               </View>
               {pageRows.map((e, i) => (
-                <View key={e.employeeId} style={[styles.tr, i < pageRows.length - 1 && styles.trBorder]}>
+                <View
+                  key={e.employeeId}
+                  style={[
+                    styles.tr,
+                    i < pageRows.length - 1 && styles.trBorder,
+                    rowMenuId === e.employeeId && styles.trMenuOpen,
+                  ]}
+                >
                   {cols.map((c) => (
                     <Pressable key={c.key} style={[styles.tdCell, { width: c.width }]} onPress={() => startEdit(e)}>
                       {renderCell(e, c.key)}
@@ -586,6 +658,7 @@ const styles = StyleSheet.create({
   fieldGrow: { flexGrow: 1, flexBasis: 200 },
   label: { fontSize: 12, fontWeight: "700", color: Colors.textBody, marginBottom: 6 },
   input: { height: 46, borderRadius: 12, borderWidth: 1, borderColor: Colors.warmBorder, backgroundColor: Colors.warmSurface, paddingHorizontal: 12, fontSize: 15, color: Colors.textPrimary, outlineStyle: "none" } as object,
+  inputMultiline: { height: 72, paddingTop: 12, textAlignVertical: "top" } as object,
   inputLocked: { opacity: 0.6 },
 
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
@@ -673,6 +746,9 @@ const styles = StyleSheet.create({
   thText: { fontSize: 12, fontWeight: "700", color: Colors.textSubtle, textTransform: "uppercase", letterSpacing: 0.4 },
   tr: { flexDirection: "row", alignItems: "center" },
   trBorder: { borderBottomWidth: 1, borderBottomColor: Colors.hairline },
+  // Lift the row whose action menu is open above the rows below it, so the
+  // absolutely-positioned Edit/Delete menu isn't painted over by later rows.
+  trMenuOpen: { position: "relative", zIndex: 30 },
   tdCell: { paddingHorizontal: 14, paddingVertical: 13, justifyContent: "center" },
   cellText: { fontSize: 14, color: Colors.textPrimary },
   actionsCell: { width: 52, position: "relative", alignItems: "center" },

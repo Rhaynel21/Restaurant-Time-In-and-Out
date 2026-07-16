@@ -239,6 +239,28 @@ async function replayOp(op) {
   }
 }
 
+// List employees as { employeeId, name, branchId, branchName } — used by the
+// live simulator to pick who to punch. Falls back to the configured default
+// branch when an employee has none on their doc.
+async function listEmployees() {
+  const snap = await db.collection("employees").get();
+  return snap.docs
+    .map((d) => {
+      const data = d.data() || {};
+      const employeeId = (data.employeeId || d.id || "").toUpperCase();
+      if (!employeeId) return null;
+      return {
+        employeeId,
+        name: data.fullName || `${data.firstName || ""} ${data.lastName || ""}`.trim() || employeeId,
+        branchId: data.branchId || config.defaultBranchId,
+        branchName: data.branchName || config.defaultBranchName,
+        accessRole: data.accessRole || "staff",
+        status: data.status || "active",
+      };
+    })
+    .filter(Boolean);
+}
+
 // Drain any punches captured while offline. Returns how many were flushed.
 async function flushQueue() {
   return queue.flush(replayOp);
@@ -297,6 +319,7 @@ module.exports = {
   getScheduleBreak,
   findOpenRecord,
   findLatestRecord,
+  listEmployees,
   writeCheckIn,
   writeBreakOut,
   writeBreakIn,

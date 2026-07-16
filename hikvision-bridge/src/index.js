@@ -8,10 +8,11 @@
 // each scan is a clock-IN or clock-OUT (based on the employee's open record),
 // and mirror it into the `attendance` collection the app already reads.
 const config = require("./config");
-const { fetchEvents, normalizeEvent } = require("./hikvision");
+const { fetchEvents, normalizeEvent, ping } = require("./hikvision");
 const store = require("./firestore");
 const state = require("./state");
 const tamper = require("./tamper");
+const simulate = require("./simulate");
 
 const seenSet = new Set();
 let lastTimeMs = null;
@@ -28,33 +29,20 @@ function log(...args) {
   console.log(new Date().toISOString(), ...args);
 }
 
-// Minutes-since-midnight for a punch, in the device's local wall clock.
-function minutesOfDay(date) {
-  return date.getHours() * 60 + date.getMinutes();
-}
-
-// Is this punch inside (or near) the scheduled break window? Break-out happens
-// around breakStart; we allow a 30-min lead and let it run to breakEnd + 30 so a
-// slightly-early or slightly-late lunch scan still reads as a break, while an
-// end-of-day scan (well past the window) correctly reads as a clock-out.
-function inBreakWindow(time, brk) {
-  if (!brk.breakStart || !brk.breakEnd) return false;
-  const [sh, sm] = brk.breakStart.split(":").map(Number);
-  const [eh, em] = brk.breakEnd.split(":").map(Number);
-  const t = minutesOfDay(time);
-  return t >= sh * 60 + sm - 30 && t <= eh * 60 + em + 30;
-}
-
-// Classify one punch into a state transition. Break in/out is INFERRED from scan
-// order + the scheduled break window (Option B), since this device reports
-// "checkIn" on every scan and can't tell us the punch type itself.
+// Classify one punch into a state transition. This device reports "checkIn" on
+// every scan and can't tell us the punch type, so the type is inferred from the
+// ORDER of scans within the day (positional), schedule-aware:
 //
-//   no open record            → IN         (open a new shift)
-//   open, no break yet:
-//        in break window       → BREAK-OUT  (start lunch)
-//        else                  → OUT        (end of shift)
-//   open, on break (out set, in unset) → BREAK-IN  (back from lunch)
-//   open, break done          → OUT        (end of shift)
+//   no open record                         → IN         (open a new shift)
+//   open, schedule has a break:
+//        no break-out yet                  → BREAK-OUT  (leave for break)
+//        break-out set, no break-in        → BREAK-IN   (back from break)
+//        break already done                → OUT        (end of shift)
+//   open, schedule has NO break            → OUT        (2-punch day: in/out)
+//
+// So a shift WITH a break is a clean 4-punch sequence (In → Break Out → Break In
+// → Out); a shift without a configured break is just In → Out. The clock time of
+// the scan no longer decides the type — only its position in the sequence does.
 async function processEvent(evt) {
   const emp = await store.resolveEmployee(evt.employeeNo, evt.name);
 
@@ -71,15 +59,19 @@ async function processEvent(evt) {
     const id = await store.writeCheckIn(emp, evt.time);
     log(`▸ IN  ${emp.employeeId} (${emp.name}) → ${id}`);
   } else {
-    const onBreak = open.breakOutAt && !open.breakInAt;
-    const breakDone = open.breakOutAt && open.breakInAt;
+    // Does this employee's schedule define a break? If so we expect the two
+    // break scans between clock-in and clock-out; if not, the next scan is OUT.
+    const brk = await store.getScheduleBreak(emp.employeeId);
+    const hasBreak = !!(brk && brk.breakStart && brk.breakEnd);
+    const breakStarted = !!open.breakOutAt;
+    const breakEnded = !!open.breakInAt;
 
-    if (onBreak) {
-      await store.writeBreakIn(open, evt.time);
-      log(`↩ BRK-IN  ${emp.employeeId} (${emp.name}) → ${open.id}`);
-    } else if (!breakDone && inBreakWindow(evt.time, await store.getScheduleBreak(emp.employeeId))) {
+    if (hasBreak && !breakStarted) {
       await store.writeBreakOut(open, evt.time);
       log(`↪ BRK-OUT ${emp.employeeId} (${emp.name}) → ${open.id}`);
+    } else if (hasBreak && breakStarted && !breakEnded) {
+      await store.writeBreakIn(open, evt.time);
+      log(`↩ BRK-IN  ${emp.employeeId} (${emp.name}) → ${open.id}`);
     } else {
       const { totalMinutes } = await store.writeCheckOut(open, evt.time);
       log(`◂ OUT ${emp.employeeId} (${emp.name}) → ${open.id} (${totalMinutes} min worked)`);
@@ -127,12 +119,15 @@ async function poll() {
   state.save({ lastTimeMs, seen: Array.from(seenSet) });
 }
 
-async function main() {
+const deviceConfigured = !!(config.deviceBaseUrl && config.username && config.password);
+
+// Live device polling loop (the real Hikvision terminal).
+async function startDeviceMode() {
   const persisted = state.load();
   lastTimeMs = persisted.lastTimeMs;
   persisted.seen.forEach((k) => seenSet.add(k));
 
-  log("Qui · Hikvision bridge starting");
+  log("● Mode:    DEVICE (live polling)");
   log(`Device:   ${config.deviceBaseUrl}`);
   log(`Interval: ${config.pollIntervalMs}ms`);
   log(lastTimeMs ? `Resuming from ${new Date(lastTimeMs).toISOString()}` : "Fresh start (today)");
@@ -162,6 +157,44 @@ async function main() {
 
   await tick();
   setInterval(tick, config.pollIntervalMs);
+}
+
+// Live simulation loop (no device needed) — keeps the app moving.
+async function startSimulateMode(reason) {
+  log("◆ Mode:    SIMULATE (no device — generating live punches)");
+  if (reason) log(`Reason:   ${reason}`);
+  await simulate.run(store, log, config);
+}
+
+// Decide which mode to run. SIMULATE=on/off forces it; otherwise we probe the
+// device and fall back to simulation when it isn't reachable — so `npm run start`
+// brings the system live either way.
+async function main() {
+  log("Qui · attendance bridge starting");
+
+  if (config.simulate === "on") {
+    return startSimulateMode("SIMULATE=1 (forced)");
+  }
+
+  if (config.simulate === "off") {
+    if (!deviceConfigured) {
+      log("! SIMULATE=0 but no device configured (set HIK_HOST/HIK_USER/HIK_PASS in .env).");
+      process.exit(1);
+    }
+    return startDeviceMode();
+  }
+
+  // auto
+  if (!deviceConfigured) {
+    return startSimulateMode("no device configured in .env");
+  }
+  try {
+    log(`Probing device at ${config.deviceBaseUrl} …`);
+    await ping();
+    return startDeviceMode();
+  } catch (err) {
+    return startSimulateMode(`device unreachable (${String(err.message).slice(0, 80)})`);
+  }
 }
 
 // Throttled heartbeat: write at most once a minute, or immediately whenever the

@@ -79,8 +79,14 @@ async function ensureAuthUser(acc) {
         phone: acc.phone,
         role: acc.role,
         accessRole: acc.accessRole,
+        // Everyone belongs to the "qui" company + brand. Without companyId the
+        // admin's Org scope resolves to zero branches and the branch-scoped tabs
+        // (Documents, Payroll, Attendance, DTR, Dashboard) show nothing.
+        companyId: "qui",
+        brandId: "qui",
         branchId: acc.branchId,
         branchName: acc.branchName,
+        status: "active",
         // Remove legacy Firestore-credential fields if present.
         salt: admin.firestore.FieldValue.delete(),
         passwordHash: admin.firestore.FieldValue.delete(),

@@ -56,7 +56,7 @@ export function DtrTab({ allowed }: { allowed: Set<string> | null }) {
 
   const exportCsv = () => {
     if (!dtr || !meta || Platform.OS !== "web") return;
-    const head = ["Date", "Day", "Schedule", "Time In", "Time Out", "Break", "Hours", "Status"];
+    const head = ["Date", "Day", "Schedule", "Time In", "Time Out", "Break", "Hours", "OT", "Undertime", "Night Diff", "Late (min)", "Status"];
     const lines = [head.join(",")];
     for (const r of dtr.rows) {
       const cells = [
@@ -67,6 +67,10 @@ export function DtrTab({ allowed }: { allowed: Set<string> | null }) {
         formatClock(r.timeOut),
         r.breakMinutes ? formatHours(r.breakMinutes) : "",
         r.workedMinutes ? formatHours(r.workedMinutes) : "",
+        r.otMinutes ? formatHours(r.otMinutes) : "",
+        r.underMinutes ? formatHours(r.underMinutes) : "",
+        r.nightMinutes ? formatHours(r.nightMinutes) : "",
+        r.lateMinutes ? String(r.lateMinutes) : "",
         statusLabel(r),
       ];
       lines.push(cells.map(csvCell).join(","));
@@ -140,6 +144,9 @@ export function DtrTab({ allowed }: { allowed: Set<string> | null }) {
             </View>
             <View style={styles.summary}>
               <Summary value={formatHours(dtr.summary.totalMinutes)} label="Hours" />
+              <Summary value={formatHours(dtr.summary.otMinutes)} label="OT" />
+              <Summary value={formatHours(dtr.summary.underMinutes)} label="Undertime" />
+              <Summary value={formatHours(dtr.summary.nightMinutes)} label="Night Diff" />
               <Summary value={formatHours(dtr.summary.breakMinutes)} label="Break" />
               <Summary value={String(dtr.summary.present)} label="Present" />
               <Summary value={String(dtr.summary.late)} label="Late" />
@@ -154,6 +161,9 @@ export function DtrTab({ allowed }: { allowed: Set<string> | null }) {
             <Text style={[styles.th, styles.cTime]}>Out</Text>
             <Text style={[styles.th, styles.cBrk]}>Brk</Text>
             <Text style={[styles.th, styles.cHrs]}>Hrs</Text>
+            <Text style={[styles.th, styles.cNum]}>OT</Text>
+            <Text style={[styles.th, styles.cNum]}>UT</Text>
+            <Text style={[styles.th, styles.cNum]}>ND</Text>
             <Text style={[styles.th, styles.cStatus]}>Status</Text>
           </View>
           {dtr.rows.map((r) => (
@@ -164,6 +174,9 @@ export function DtrTab({ allowed }: { allowed: Set<string> | null }) {
               <Text style={[styles.td, styles.cTime]}>{formatClock(r.timeOut)}</Text>
               <Text style={[styles.td, styles.cBrk]}>{r.breakMinutes ? formatHours(r.breakMinutes) : "—"}</Text>
               <Text style={[styles.td, styles.cHrs]}>{r.workedMinutes ? formatHours(r.workedMinutes) : "—"}</Text>
+              <Text style={[styles.td, styles.cNum, r.otMinutes ? styles.otText : undefined]}>{r.otMinutes ? formatHours(r.otMinutes) : "—"}</Text>
+              <Text style={[styles.td, styles.cNum, r.underMinutes ? styles.utText : undefined]}>{r.underMinutes ? formatHours(r.underMinutes) : "—"}</Text>
+              <Text style={[styles.td, styles.cNum, r.nightMinutes ? styles.ndText : undefined]}>{r.nightMinutes ? formatHours(r.nightMinutes) : "—"}</Text>
               <Text style={[styles.td, styles.cStatus, statusColor(r.status, r.late)]}>{statusLabel(r)}</Text>
             </View>
           ))}
@@ -234,5 +247,9 @@ const styles = StyleSheet.create({
   cTime: { width: 78, fontVariant: ["tabular-nums"] },
   cBrk: { width: 42, fontVariant: ["tabular-nums"], textAlign: "right", color: Colors.textMuted },
   cHrs: { width: 48, fontVariant: ["tabular-nums"], textAlign: "right" },
+  cNum: { width: 44, fontVariant: ["tabular-nums"], textAlign: "right", color: Colors.textMuted },
+  otText: { color: Colors.primaryDark, fontWeight: "700" },
+  utText: { color: Colors.danger, fontWeight: "700" },
+  ndText: { color: "#3B5BDB", fontWeight: "700" },
   cStatus: { flex: 1.2, minWidth: 0 },
 });

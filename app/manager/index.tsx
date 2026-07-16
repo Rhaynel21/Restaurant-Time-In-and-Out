@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Redirect, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Image, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 
 import { ApprovalsTab } from "@/components/manager/ApprovalsTab";
 import { AttendanceTab } from "@/components/manager/AttendanceTab";
@@ -169,7 +169,11 @@ export default function ManagerPortal() {
       <View style={styles.screenRow}>
         <View style={styles.sidebar}>
           <View style={styles.brand}>
-            <Text style={styles.brandMark}>qui</Text>
+            <Image
+              source={require("../../assets/images/qui-logo-light.png")}
+              style={styles.brandLogo}
+              resizeMode="contain"
+            />
             <Text style={styles.brandSub}>Manager Portal</Text>
           </View>
           <ScrollView style={styles.nav} contentContainerStyle={styles.navContent} showsVerticalScrollIndicator={false}>
@@ -201,7 +205,11 @@ export default function ManagerPortal() {
     <View style={styles.screen}>
       <View style={styles.mobileBar}>
         <View style={styles.mobileBrand}>
-          <Text style={styles.mobileMark}>qui</Text>
+          <Image
+            source={require("../../assets/images/qui-logo-light.png")}
+            style={styles.mobileLogo}
+            resizeMode="contain"
+          />
           <Text style={styles.mobileSub}>Manager Portal</Text>
         </View>
         <Pressable style={styles.logout} onPress={logout}>
@@ -242,13 +250,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "rgba(247,245,240,0.08)",
   },
-  brandMark: {
-    fontFamily: "Georgia",
-    fontSize: 38,
-    fontWeight: "700",
-    letterSpacing: 1,
-    lineHeight: 40,
-    color: Colors.textOnDark,
+  brandLogo: {
+    width: 96,
+    height: 89, // source aspect 1000×929
   },
   brandSub: {
     marginTop: 6,
@@ -349,7 +353,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   mobileBrand: {},
-  mobileMark: { fontFamily: "Georgia", fontSize: 26, fontWeight: "700", color: Colors.textOnDark, lineHeight: 28 },
+  mobileLogo: { width: 92, height: 85 },
   mobileSub: { fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: "rgba(247,245,240,0.5)", marginTop: 2 },
   mobileNavWrap: { backgroundColor: Colors.darkSurface, borderTopWidth: 1, borderTopColor: "rgba(247,245,240,0.08)" },
   mobileNav: { flexDirection: "row", gap: 4, paddingHorizontal: 10, paddingBottom: 12 },

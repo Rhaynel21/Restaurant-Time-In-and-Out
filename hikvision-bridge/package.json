@@ -8,6 +8,9 @@
     "start": "node src/index.js",
     "test:connect": "node src/test-connect.js",
     "seed": "node seed-accounts.js",
+    "seed:org": "node seed-org.js",
+    "seed:dummy": "node seed-dummy.js",
+    "seed:docs": "node seed-docs.js",
     "sync:users": "node sync-users.js"
   },
   "dependencies": {

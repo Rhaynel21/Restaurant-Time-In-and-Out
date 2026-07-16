@@ -9,6 +9,7 @@ import { BrandTitle } from "@/components/brand-title";
 import { useSession } from "@/contexts/session-context";
 import { useResponsiveInset } from "@/hooks/use-responsive";
 import { AttendanceRecord, subscribeTodayAttendance } from "@/lib/attendance";
+import { DeviceStatus, isDeviceOnline, subscribeDevices } from "@/lib/devices";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -26,7 +27,10 @@ export default function Dashboard() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [checkInAt, setCheckInAt] = useState<Date | null>(null);
   const [checkOutAt, setCheckOutAt] = useState<Date | null>(null);
+  const [breakOutAt, setBreakOutAt] = useState<Date | null>(null);
+  const [breakInAt, setBreakInAt] = useState<Date | null>(null);
   const [isLive, setIsLive] = useState(false);
+  const [devices, setDevices] = useState<DeviceStatus[]>([]);
 
   const isCheckedIn = checkInAt !== null && checkOutAt === null;
 
@@ -48,16 +52,24 @@ export default function Dashboard() {
         if (!latest) {
           setCheckInAt(null);
           setCheckOutAt(null);
+          setBreakOutAt(null);
+          setBreakInAt(null);
           return;
         }
         setCheckInAt(latest.checkInAt);
         setCheckOutAt(latest.checkOutAt);
+        setBreakOutAt(latest.breakOutAt);
+        setBreakInAt(latest.breakInAt);
       },
       () => setIsLive(false),
     );
 
     return unsubscribe;
   }, [employee]);
+
+  // Biometric terminal health, so we can tell the employee when their scans are
+  // being buffered offline (rather than silently missing).
+  useEffect(() => subscribeDevices(setDevices, () => setDevices([])), []);
 
   const timeLabel = currentTime.toLocaleTimeString("en-US", {
     hour: "2-digit",
@@ -143,6 +155,23 @@ export default function Dashboard() {
     circleTheme === "in" ? "Clocked In" : circleTheme === "out" ? "Clocked Out" : "No Scan Yet";
   const circleIcon =
     circleTheme === "in" ? "chef-hat" : circleTheme === "out" ? "exit-to-app" : "fingerprint";
+
+  // Sync-health banner: buffered scans take priority (recovery in progress),
+  // otherwise flag a stale/offline scanner. Silent when everything is healthy.
+  const queuedScans = devices.reduce((sum, d) => sum + (d.queueDepth || 0), 0);
+  const scannerOffline = devices.length > 0 && devices.some((d) => !isDeviceOnline(d));
+  const syncBanner: { icon: React.ComponentProps<typeof MaterialCommunityIcons>["name"]; text: string } | null =
+    queuedScans > 0
+      ? {
+          icon: "cloud-sync-outline",
+          text: `Syncing ${queuedScans} buffered scan${queuedScans === 1 ? "" : "s"}… they'll appear here shortly.`,
+        }
+      : scannerOffline
+        ? {
+            icon: "cloud-off-outline",
+            text: "Scanner offline — your scans are still saved and will sync automatically once it reconnects.",
+          }
+        : null;
 
   // No session → bounce to login. Declarative <Redirect> waits for the navigator
   // to be ready (an imperative router.replace in an effect can fire too early and
@@ -232,6 +261,13 @@ export default function Dashboard() {
           </View>
         </View>
 
+        {syncBanner && (
+          <View style={styles.syncBanner}>
+            <MaterialCommunityIcons name={syncBanner.icon} size={16} color="#8A5A2B" />
+            <Text style={styles.syncBannerText}>{syncBanner.text}</Text>
+          </View>
+        )}
+
         <View style={styles.bioHint}>
           <MaterialCommunityIcons name="fingerprint" size={15} color="#0A0A0A" />
           <Text style={styles.bioHintText}>
@@ -265,6 +301,22 @@ export default function Dashboard() {
             label="Hours"
             tint="#2A2A2A"
             bg="rgba(20, 20, 20, 0.08)"
+          />
+        </View>
+        <View style={[styles.statsRow, styles.statsRowSecond]}>
+          <MetricCard
+            icon="coffee-outline"
+            value={formatPunchTime(breakOutAt)}
+            label="Break Out"
+            tint="#8A5A2B"
+            bg="rgba(138, 90, 43, 0.10)"
+          />
+          <MetricCard
+            icon="coffee-off-outline"
+            value={formatPunchTime(breakInAt)}
+            label="Break In"
+            tint="#2F6B4F"
+            bg="rgba(47, 107, 79, 0.08)"
           />
         </View>
 
@@ -541,6 +593,25 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(10, 10, 10, 0.10)",
   },
+  syncBanner: {
+    marginTop: 22,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 14,
+    backgroundColor: "rgba(138, 90, 43, 0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(138, 90, 43, 0.22)",
+  },
+  syncBannerText: {
+    flex: 1,
+    fontSize: 12,
+    color: "#7A4F26",
+    fontWeight: "600",
+    lineHeight: 16,
+  },
   bioHintText: {
     flex: 1,
     fontSize: 12,
@@ -563,6 +634,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     gap: 10,
+  },
+  statsRowSecond: {
+    marginTop: 10,
   },
   scheduleLink: {
     flexDirection: "row",

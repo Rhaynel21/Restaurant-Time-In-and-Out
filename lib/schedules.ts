@@ -11,10 +11,32 @@ import { db } from "@/lib/firebase";
 //
 // The effective shift for any date = override(date) ?? weekly[weekday].
 
-export type Shift = {
-  off: boolean; // true = rest day (start/end ignored)
+// One continuous work block within a day. A normal shift has one block; a split
+// (broken) shift has two or more — e.g. 09:00–14:00 and 17:00–21:00.
+export type ShiftBlock = {
   start: string; // "HH:MM" 24h
   end: string; // "HH:MM" 24h
+};
+
+export type Shift = {
+  off: boolean; // true = rest day (start/end/segments ignored)
+  start: string; // "HH:MM" 24h — mirrors the first block (earliest start)
+  end: string; // "HH:MM" 24h — mirrors the last block (latest end)
+  // Present only for split/broken shifts (length ≥ 2). When absent, the shift is
+  // the single block [start, end]. Callers should read blocks via shiftBlocks().
+  segments?: ShiftBlock[];
+};
+
+// A rotating rest-day pattern: instead of fixed weekly rest days, the employee
+// works `workDays` in a row then rests `restDays`, cycling from `anchorDate`.
+// This drives the classic "6 days on, 1 day off" rotation whose rest day drifts
+// across the week. `shift` is the hours worked on the rotation's working days.
+export type RestRotation = {
+  enabled: boolean;
+  anchorDate: string; // YYYY-MM-DD — cycle day 0
+  workDays: number; // consecutive working days (≥ 1)
+  restDays: number; // consecutive rest days (≥ 1)
+  shift: Shift; // hours on a rotation working day
 };
 
 export type Schedule = {
@@ -24,6 +46,9 @@ export type Schedule = {
   branchName: string | null;
   weekly: Shift[]; // length 7, index 0 = Sunday … 6 = Saturday
   overrides: Record<string, Shift>; // YYYY-MM-DD -> shift
+  // Optional rotating rest-day pattern. When enabled it decides rest vs. work for
+  // every day (overriding the weekly rest flags); a date override still wins.
+  restRotation: RestRotation | null;
   // One unpaid meal break window (HH:MM), applied to every working day. The
   // biometric bridge uses this window to classify break-out / break-in punches,
   // and the DTR deducts the break from worked hours. null = no scheduled break.
@@ -43,13 +68,65 @@ export function defaultWeekly(): Shift[] {
   );
 }
 
-function toShift(value: unknown): Shift {
-  const v = (value ?? {}) as Partial<Shift>;
+function toBlock(value: unknown): ShiftBlock {
+  const b = (value ?? {}) as Partial<ShiftBlock>;
   return {
-    off: typeof v.off === "boolean" ? v.off : false,
-    start: typeof v.start === "string" ? v.start : "09:00",
-    end: typeof v.end === "string" ? v.end : "18:00",
+    start: typeof b.start === "string" ? b.start : "09:00",
+    end: typeof b.end === "string" ? b.end : "18:00",
   };
+}
+
+function toShift(value: unknown): Shift {
+  const v = (value ?? {}) as Partial<Shift> & { segments?: unknown };
+  const off = typeof v.off === "boolean" ? v.off : false;
+  let start = typeof v.start === "string" ? v.start : "09:00";
+  let end = typeof v.end === "string" ? v.end : "18:00";
+  if (Array.isArray(v.segments) && v.segments.length >= 2) {
+    const segments = v.segments.map(toBlock);
+    // Keep start/end mirrored to the span so legacy readers stay correct.
+    return { off, start: segments[0].start, end: segments[segments.length - 1].end, segments };
+  }
+  // A single-element segments array collapses back to a plain shift.
+  if (Array.isArray(v.segments) && v.segments.length === 1) {
+    const b = toBlock(v.segments[0]);
+    start = b.start;
+    end = b.end;
+  }
+  return { off, start, end };
+}
+
+// The work blocks that make up a shift: [] on a rest day, the single [start,end]
+// for a normal shift, or the explicit list for a split shift.
+export function shiftBlocks(shift: Shift): ShiftBlock[] {
+  if (shift.off) return [];
+  if (shift.segments && shift.segments.length >= 2) return shift.segments;
+  return [{ start: shift.start, end: shift.end }];
+}
+
+// Build a normalized Shift from a set of blocks, collapsing to a plain shift when
+// there is only one block. Rest days ignore the blocks.
+export function makeShift(off: boolean, blocks: ShiftBlock[]): Shift {
+  if (off || blocks.length === 0) return { off: true, start: "09:00", end: "18:00" };
+  if (blocks.length === 1) return { off: false, start: blocks[0].start, end: blocks[0].end };
+  return { off: false, start: blocks[0].start, end: blocks[blocks.length - 1].end, segments: blocks };
+}
+
+function toRestRotation(value: unknown): RestRotation | null {
+  if (!value || typeof value !== "object") return null;
+  const o = value as Record<string, unknown>;
+  if (o.enabled !== true || typeof o.anchorDate !== "string") return null;
+  const workDays = typeof o.workDays === "number" && o.workDays >= 1 ? Math.floor(o.workDays) : 6;
+  const restDays = typeof o.restDays === "number" && o.restDays >= 1 ? Math.floor(o.restDays) : 1;
+  return { enabled: true, anchorDate: o.anchorDate, workDays, restDays, shift: toShift(o.shift) };
+}
+
+// Whole days between two YYYY-MM-DD dates (b − a), in local time.
+function daysBetween(aYMD: string, bYMD: string): number {
+  const a = fromYMDsafe(aYMD);
+  a.setHours(0, 0, 0, 0);
+  const b = fromYMDsafe(bYMD);
+  b.setHours(0, 0, 0, 0);
+  return Math.round((b.getTime() - a.getTime()) / 86400000);
 }
 
 function timestampToDate(value: unknown): Date | null {
@@ -80,6 +157,7 @@ function toSchedule(employeeId: string, data: Record<string, unknown>): Schedule
     branchName: typeof data.branchName === "string" ? data.branchName : null,
     weekly,
     overrides,
+    restRotation: toRestRotation(data.restRotation),
     breakStart: typeof data.breakStart === "string" ? data.breakStart : null,
     breakEnd: typeof data.breakEnd === "string" ? data.breakEnd : null,
     updatedAt: timestampToDate(data.updatedAt),
@@ -97,6 +175,7 @@ export function emptySchedule(employeeId: string, employeeName = employeeId): Sc
     branchName: null,
     weekly: defaultWeekly(),
     overrides: {},
+    restRotation: null,
     breakStart: "12:00",
     breakEnd: "13:00",
     updatedAt: null,
@@ -119,10 +198,23 @@ export function formatBreak(schedule: Pick<Schedule, "breakStart" | "breakEnd">)
   return `${formatTime12(schedule.breakStart)} – ${formatTime12(schedule.breakEnd)}`;
 }
 
-// The shift that actually applies on a given date: an override wins, otherwise
-// the weekly default for that weekday.
+// The shift that actually applies on a given date. Precedence:
+//   1. a one-off date override (always wins),
+//   2. a rotating rest-day pattern, if enabled,
+//   3. the weekly default for that weekday.
 export function effectiveShift(schedule: Schedule, ymd: string): Shift {
   if (schedule.overrides[ymd]) return schedule.overrides[ymd];
+
+  const rr = schedule.restRotation;
+  if (rr && rr.enabled) {
+    const cycle = rr.workDays + rr.restDays;
+    if (cycle > 0) {
+      const idx = ((daysBetween(rr.anchorDate, ymd) % cycle) + cycle) % cycle;
+      if (idx >= rr.workDays) return { off: true, start: "09:00", end: "18:00" };
+      return rr.shift.off ? { off: false, start: "09:00", end: "18:00" } : rr.shift;
+    }
+  }
+
   const [y, m, d] = ymd.split("-").map(Number);
   const weekday = new Date(y, (m || 1) - 1, d || 1).getDay();
   return schedule.weekly[weekday] ?? { off: true, start: "09:00", end: "18:00" };
@@ -142,19 +234,24 @@ export function formatTime12(hhmm: string): string {
   return `${hour12}:${String(m).padStart(2, "0")} ${period}`;
 }
 
-// "9:00 AM – 6:00 PM" or "Rest day".
+// "9:00 AM – 6:00 PM", "9:00 AM – 2:00 PM, 5:00 PM – 9:00 PM" (split), or "Rest day".
 export function formatShift(shift: Shift): string {
   if (shift.off) return "Rest day";
-  return `${formatTime12(shift.start)} – ${formatTime12(shift.end)}`;
+  return shiftBlocks(shift)
+    .map((b) => `${formatTime12(b.start)} – ${formatTime12(b.end)}`)
+    .join(", ");
 }
 
-// Scheduled shift length in minutes (0 for rest days / invalid ranges).
+// Total scheduled work length in minutes across all blocks (0 for rest days /
+// invalid ranges). For a split shift this sums each block, excluding the gap.
 export function shiftMinutes(shift: Shift): number {
   if (shift.off) return 0;
-  const [sh, sm] = shift.start.split(":").map(Number);
-  const [eh, em] = shift.end.split(":").map(Number);
-  const mins = eh * 60 + em - (sh * 60 + sm);
-  return mins > 0 ? mins : 0;
+  return shiftBlocks(shift).reduce((sum, b) => {
+    const [sh, sm] = b.start.split(":").map(Number);
+    const [eh, em] = b.end.split(":").map(Number);
+    const mins = eh * 60 + em - (sh * 60 + sm);
+    return sum + (mins > 0 ? mins : 0);
+  }, 0);
 }
 
 // Real-time stream of one employee's schedule. Fires with the default schedule
@@ -188,7 +285,15 @@ export async function getSchedule(employeeId: string): Promise<Schedule> {
 export async function saveSchedule(
   schedule: Pick<
     Schedule,
-    "employeeId" | "employeeName" | "branchId" | "branchName" | "weekly" | "overrides" | "breakStart" | "breakEnd"
+    | "employeeId"
+    | "employeeName"
+    | "branchId"
+    | "branchName"
+    | "weekly"
+    | "overrides"
+    | "restRotation"
+    | "breakStart"
+    | "breakEnd"
   >,
   updatedBy: string,
 ) {
@@ -201,6 +306,8 @@ export async function saveSchedule(
       branchName: schedule.branchName,
       weekly: schedule.weekly,
       overrides: schedule.overrides,
+      // Firestore rejects `undefined`; store an explicit null when no rotation.
+      restRotation: schedule.restRotation ?? null,
       breakStart: schedule.breakStart ?? null,
       breakEnd: schedule.breakEnd ?? null,
       updatedBy,

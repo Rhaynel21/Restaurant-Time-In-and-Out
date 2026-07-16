@@ -9,8 +9,8 @@
 // time range ("09:00-18:00", "9:00 AM - 6:00 PM"). The parsed weekly grid maps
 // onto Schedule.weekly (index 0 = Sunday … 6 = Saturday).
 
-import type { Shift } from "@/lib/schedules";
-import { WEEKDAY_LABELS, WEEKDAY_SHORT, formatShift } from "@/lib/schedules";
+import type { Shift, ShiftBlock } from "@/lib/schedules";
+import { WEEKDAY_LABELS, WEEKDAY_SHORT, formatShift, makeShift, shiftBlocks } from "@/lib/schedules";
 
 export type ImportRow = {
   employeeId: string | null;
@@ -39,16 +39,19 @@ function normalizeTime(raw: string): string {
   return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
 }
 
-// Turn one spreadsheet cell into a Shift.
+// Turn one spreadsheet cell into a Shift. Supports split shifts: multiple ranges
+// separated by comma / "&" / "+" / ";" (e.g. "09:00-14:00, 17:00-21:00").
 export function parseShiftCell(raw: unknown): Shift {
   const s = String(raw ?? "").trim().toLowerCase();
   if (REST_TOKENS.includes(s)) return { off: true, start: "09:00", end: "18:00" };
-  const parts = s.split(/\s*(?:-|–|—|to)\s*/i).filter(Boolean);
-  if (parts.length >= 2) {
-    return { off: false, start: normalizeTime(parts[0]), end: normalizeTime(parts[1]) };
+  const blocks: ShiftBlock[] = [];
+  for (const range of s.split(/\s*(?:,|&|\+|;)\s*/).filter(Boolean)) {
+    const parts = range.split(/\s*(?:-|–|—|to)\s*/i).filter(Boolean);
+    if (parts.length >= 2) blocks.push({ start: normalizeTime(parts[0]), end: normalizeTime(parts[1]) });
   }
-  // A lone value can't form a range — treat as a rest day rather than guess.
-  return { off: true, start: "09:00", end: "18:00" };
+  // No parseable range → treat as a rest day rather than guess.
+  if (blocks.length === 0) return { off: true, start: "09:00", end: "18:00" };
+  return makeShift(false, blocks);
 }
 
 // Parse the meal-break cell ("12:00-13:00", "none", blank) into a window or null.
@@ -122,7 +125,7 @@ export async function downloadSchedules(
     return [
       e.employeeId,
       e.fullName,
-      ...weekly.map((s) => (s.off ? "OFF" : `${s.start}-${s.end}`)),
+      ...weekly.map((s) => (s.off ? "OFF" : shiftBlocks(s).map((b) => `${b.start}-${b.end}`).join(", "))),
       brk,
     ];
   });

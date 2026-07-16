@@ -8,16 +8,26 @@ import { EmployeeSummary, subscribeEmployees } from "@/lib/employees";
 import { inScope } from "@/lib/org";
 import { downloadSchedules, parseScheduleWorkbook } from "@/lib/schedule-import";
 import {
+  RestRotation,
   Schedule,
   Shift,
+  ShiftBlock,
   WEEKDAY_LABELS,
   WEEKDAY_SHORT,
   emptySchedule,
   formatShift,
   fromYMDsafe,
   getSchedule,
+  makeShift,
   saveSchedule,
+  shiftBlocks,
 } from "@/lib/schedules";
+
+// Today's date as YYYY-MM-DD (used to seed a new rotation's anchor).
+function todayYMD() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 function fmtOverrideDate(ymd: string) {
   const d = fromYMDsafe(ymd);
@@ -122,6 +132,7 @@ export function SchedulesTab({ managerName, allowed }: { managerName: string; al
               branchName: emp.branchName,
               weekly: row.weekly,
               overrides: existing.overrides,
+              restRotation: existing.restRotation,
               breakStart: row.breakStart ?? existing.breakStart,
               breakEnd: row.breakEnd ?? existing.breakEnd,
             },
@@ -162,12 +173,55 @@ export function SchedulesTab({ managerName, allowed }: { managerName: string; al
     }
   };
 
-  const setWeekday = (day: number, patch: Partial<Shift>) => {
+  // Replace one weekday's whole shift (blocks + rest flag).
+  const setDayShift = (day: number, shift: Shift) => {
     setSched((prev) => {
       if (!prev) return prev;
-      const weekly = prev.weekly.map((s, i) => (i === day ? { ...s, ...patch } : s));
+      const weekly = prev.weekly.map((s, i) => (i === day ? shift : s));
       return { ...prev, weekly };
     });
+  };
+
+  const toggleDayRest = (day: number) =>
+    setSched((prev) => {
+      if (!prev) return prev;
+      const cur = prev.weekly[day];
+      const next = cur.off ? makeShift(false, [{ start: "09:00", end: "18:00" }]) : makeShift(true, []);
+      const weekly = prev.weekly.map((s, i) => (i === day ? next : s));
+      return { ...prev, weekly };
+    });
+
+  // "Drag to copy": stamp one day's shift onto another day.
+  const [copyFrom, setCopyFrom] = useState<number | null>(null);
+  const copyDayTo = (toDay: number) => {
+    if (copyFrom === null || copyFrom === toDay) return;
+    setSched((prev) => {
+      if (!prev) return prev;
+      const src = prev.weekly[copyFrom];
+      const weekly = prev.weekly.map((s, i) => (i === toDay ? { ...src } : s));
+      return { ...prev, weekly };
+    });
+  };
+
+  // ── Rest-day rotation ──
+  const rotation = sched?.restRotation ?? null;
+  const setRotation = (next: RestRotation | null) => setSched((prev) => (prev ? { ...prev, restRotation: next } : prev));
+  const toggleRotation = () => {
+    if (rotation?.enabled) {
+      setRotation(null);
+    } else {
+      setRotation({
+        enabled: true,
+        anchorDate: todayYMD(),
+        workDays: 6,
+        restDays: 1,
+        shift: makeShift(false, [{ start: "09:00", end: "18:00" }]),
+      });
+    }
+  };
+  const patchRotation = (patch: Partial<RestRotation>) => {
+    if (!rotation) return;
+    setRotation({ ...rotation, ...patch });
   };
 
   const setBreak = (patch: Partial<Pick<Schedule, "breakStart" | "breakEnd">>) =>
@@ -277,36 +331,115 @@ export function SchedulesTab({ managerName, allowed }: { managerName: string; al
       {sched && !loading && (
         <>
           <SectionTitle>Weekly Default</SectionTitle>
+          {rotation?.enabled && (
+            <Text style={styles.rotationBanner}>
+              Rest days are driven by the rotation below while it&apos;s on — the per-day Rest toggles here are ignored.
+            </Text>
+          )}
           <Card>
-            {sched.weekly.map((shift, day) => (
-              <View key={day} style={[styles.weekRow, day < 6 && styles.rowBorder]}>
-                <Text style={styles.weekDay}>{WEEKDAY_SHORT[day]}</Text>
-                <Text style={styles.weekDayFull}>{WEEKDAY_LABELS[day]}</Text>
-                <TextInput
-                  style={[styles.timeInput, shift.off && styles.disabled]}
-                  value={shift.start}
-                  editable={!shift.off}
-                  onChangeText={(t) => setWeekday(day, { start: t })}
-                  placeholder="09:00"
-                  placeholderTextColor={Colors.textPlaceholder}
-                />
-                <Text style={styles.dash}>–</Text>
-                <TextInput
-                  style={[styles.timeInput, shift.off && styles.disabled]}
-                  value={shift.end}
-                  editable={!shift.off}
-                  onChangeText={(t) => setWeekday(day, { end: t })}
-                  placeholder="18:00"
-                  placeholderTextColor={Colors.textPlaceholder}
-                />
-                <Pressable style={styles.restToggle} onPress={() => setWeekday(day, { off: !shift.off })}>
-                  <View style={[styles.checkbox, shift.off && styles.checkboxOn]}>
-                    {shift.off && <MaterialCommunityIcons name="check" size={12} color="#fff" />}
+            {sched.weekly.map((shift, day) => {
+              const isCopySource = copyFrom === day;
+              return (
+                <View key={day} style={[styles.dayBlock, day < 6 && styles.rowBorder]}>
+                  <View style={styles.dayHeader}>
+                    <Text style={styles.weekDay}>{WEEKDAY_SHORT[day]}</Text>
+                    <Text style={styles.weekDayFull}>{WEEKDAY_LABELS[day]}</Text>
+                    <View style={{ flex: 1 }} />
+                    {shift.off ? <Text style={styles.restBadge}>Rest day</Text> : null}
+                    <Pressable style={styles.restToggle} onPress={() => toggleDayRest(day)}>
+                      <View style={[styles.checkbox, shift.off && styles.checkboxOn]}>
+                        {shift.off && <MaterialCommunityIcons name="check" size={12} color="#fff" />}
+                      </View>
+                      <Text style={styles.restLabel}>Rest</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.copyBtn, isCopySource && styles.copyBtnActive]}
+                      onPress={() => setCopyFrom(isCopySource ? null : day)}
+                    >
+                      <MaterialCommunityIcons
+                        name="content-copy"
+                        size={13}
+                        color={isCopySource ? "#fff" : Colors.textMuted}
+                      />
+                    </Pressable>
                   </View>
-                  <Text style={styles.restLabel}>Rest</Text>
-                </Pressable>
+
+                  {!shift.off && <BlockEditor shift={shift} onChange={(s) => setDayShift(day, s)} />}
+
+                  {copyFrom !== null && copyFrom !== day && (
+                    <Pressable style={styles.pasteBtn} onPress={() => copyDayTo(day)}>
+                      <MaterialCommunityIcons name="content-paste" size={13} color={Colors.primary} />
+                      <Text style={styles.pasteText}>
+                        Paste {WEEKDAY_SHORT[copyFrom]} → {WEEKDAY_SHORT[day]}
+                      </Text>
+                    </Pressable>
+                  )}
+                </View>
+              );
+            })}
+            {copyFrom !== null && (
+              <Pressable style={styles.copyDoneBtn} onPress={() => setCopyFrom(null)}>
+                <Text style={styles.copyDoneText}>Done copying {WEEKDAY_SHORT[copyFrom]}</Text>
+              </Pressable>
+            )}
+          </Card>
+
+          <SectionTitle>Rest Day Rotation</SectionTitle>
+          <Card>
+            <View style={styles.rotHeaderRow}>
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={styles.rotTitle}>Rotating rest days</Text>
+                <Text style={styles.rotHint}>
+                  Work N days, rest M days — the rest day rotates through the week each cycle. Overrides the weekly rest
+                  pattern above.
+                </Text>
               </View>
-            ))}
+              <Pressable style={[styles.switch, rotation?.enabled && styles.switchOn]} onPress={toggleRotation}>
+                <View style={[styles.knob, rotation?.enabled && styles.knobOn]} />
+              </Pressable>
+            </View>
+
+            {rotation?.enabled && (
+              <View style={styles.rotBody}>
+                <View style={styles.rotPresets}>
+                  <Pressable style={styles.presetBtn} onPress={() => patchRotation({ workDays: 6, restDays: 1 })}>
+                    <Text style={styles.presetText}>6-day week</Text>
+                  </Pressable>
+                  <Pressable style={styles.presetBtn} onPress={() => patchRotation({ workDays: 5, restDays: 2 })}>
+                    <Text style={styles.presetText}>5-day week</Text>
+                  </Pressable>
+                  <Pressable style={styles.presetBtn} onPress={() => patchRotation({ workDays: 4, restDays: 2 })}>
+                    <Text style={styles.presetText}>4-on / 2-off</Text>
+                  </Pressable>
+                </View>
+
+                <View style={styles.rotRow}>
+                  <Text style={styles.rotLabel}>Cycle start</Text>
+                  <TextInput
+                    style={[styles.timeInput, styles.rotDateInput]}
+                    value={rotation.anchorDate}
+                    onChangeText={(t) => patchRotation({ anchorDate: t })}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor={Colors.textPlaceholder}
+                  />
+                </View>
+
+                <View style={styles.rotRow}>
+                  <Text style={styles.rotLabel}>Work days</Text>
+                  <Stepper value={rotation.workDays} min={1} onChange={(v) => patchRotation({ workDays: v })} />
+                  <View style={styles.rotGap} />
+                  <Text style={styles.rotLabel}>Rest days</Text>
+                  <Stepper value={rotation.restDays} min={1} onChange={(v) => patchRotation({ restDays: v })} />
+                </View>
+
+                <Text style={styles.rotSubLabel}>Working-day hours</Text>
+                <BlockEditor shift={rotation.shift} onChange={(s) => patchRotation({ shift: s })} />
+
+                <Text style={styles.rotHint}>
+                  Cycle: {rotation.workDays + rotation.restDays} days — {rotation.workDays} on, {rotation.restDays} off.
+                </Text>
+              </View>
+            )}
           </Card>
 
           <SectionTitle>Meal Break</SectionTitle>
@@ -417,6 +550,66 @@ export function SchedulesTab({ managerName, allowed }: { managerName: string; al
   );
 }
 
+// Edits the work blocks of one shift. One block = a normal shift; add blocks for
+// a split/broken shift (e.g. 09:00–14:00 and 17:00–21:00).
+function BlockEditor({ shift, onChange }: { shift: Shift; onChange: (s: Shift) => void }) {
+  const blocks = shiftBlocks(shift);
+  const setBlock = (i: number, patch: Partial<ShiftBlock>) =>
+    onChange(makeShift(false, blocks.map((b, j) => (j === i ? { ...b, ...patch } : b))));
+  const addBlock = () => onChange(makeShift(false, [...blocks, { start: "17:00", end: "21:00" }]));
+  const removeBlock = (i: number) => {
+    const next = blocks.filter((_, j) => j !== i);
+    onChange(makeShift(false, next.length ? next : [{ start: "09:00", end: "18:00" }]));
+  };
+  return (
+    <View style={styles.blocks}>
+      {blocks.map((b, i) => (
+        <View key={i} style={styles.blockRow}>
+          <TextInput
+            style={styles.timeInput}
+            value={b.start}
+            onChangeText={(t) => setBlock(i, { start: t })}
+            placeholder="09:00"
+            placeholderTextColor={Colors.textPlaceholder}
+          />
+          <Text style={styles.dash}>–</Text>
+          <TextInput
+            style={styles.timeInput}
+            value={b.end}
+            onChangeText={(t) => setBlock(i, { end: t })}
+            placeholder="18:00"
+            placeholderTextColor={Colors.textPlaceholder}
+          />
+          {blocks.length > 1 && (
+            <Pressable style={styles.blockDel} onPress={() => removeBlock(i)}>
+              <MaterialCommunityIcons name="close" size={14} color={Colors.danger} />
+            </Pressable>
+          )}
+          {i === 0 && blocks.length > 1 && <Text style={styles.splitTag}>Split</Text>}
+        </View>
+      ))}
+      <Pressable style={styles.addBlockBtn} onPress={addBlock}>
+        <MaterialCommunityIcons name="plus" size={14} color={Colors.primary} />
+        <Text style={styles.addBlockText}>Add block (split shift)</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function Stepper({ value, min = 0, onChange }: { value: number; min?: number; onChange: (v: number) => void }) {
+  return (
+    <View style={styles.stepper}>
+      <Pressable style={styles.stepBtn} onPress={() => onChange(Math.max(min, value - 1))}>
+        <MaterialCommunityIcons name="minus" size={16} color={Colors.textPrimary} />
+      </Pressable>
+      <Text style={styles.stepVal}>{value}</Text>
+      <Pressable style={styles.stepBtn} onPress={() => onChange(value + 1)}>
+        <MaterialCommunityIcons name="plus" size={16} color={Colors.textPrimary} />
+      </Pressable>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: {
@@ -432,6 +625,67 @@ const styles = StyleSheet.create({
   chipTextActive: { color: "#fff" },
   chipId: { fontSize: 10, color: Colors.textFaint, marginTop: 1 },
   muted: { color: Colors.textFaint, fontSize: 13 },
+
+  // Per-day block editor
+  dayBlock: { paddingVertical: 12 },
+  dayHeader: { flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" },
+  restBadge: { fontSize: 12, fontWeight: "700", color: Colors.textFaint, fontStyle: "italic", marginRight: 4 },
+  copyBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Colors.warmSurface,
+    borderWidth: 1,
+    borderColor: Colors.warmBorder,
+  },
+  copyBtnActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  blocks: { marginTop: 10, gap: 8 },
+  blockRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  blockDel: { width: 28, height: 28, borderRadius: 8, backgroundColor: Colors.dangerTint, alignItems: "center", justifyContent: "center" },
+  splitTag: { fontSize: 10, fontWeight: "800", color: Colors.primary, letterSpacing: 0.6, textTransform: "uppercase" },
+  addBlockBtn: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", paddingVertical: 6, paddingHorizontal: 8, borderRadius: 8 },
+  addBlockText: { fontSize: 12, fontWeight: "700", color: Colors.primary },
+  pasteBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    alignSelf: "flex-start",
+    marginTop: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 9,
+    backgroundColor: Colors.warmSurface,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    borderStyle: "dashed",
+  },
+  pasteText: { fontSize: 12, fontWeight: "700", color: Colors.primary },
+  copyDoneBtn: { alignSelf: "center", marginTop: 12, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 9, backgroundColor: Colors.warmSurface, borderWidth: 1, borderColor: Colors.warmBorder },
+  copyDoneText: { fontSize: 13, fontWeight: "700", color: Colors.textMuted },
+  rotationBanner: { fontSize: 12, color: Colors.primaryDark, fontWeight: "600", lineHeight: 17, marginBottom: 8, marginTop: -4 },
+
+  // Rotation card
+  rotHeaderRow: { flexDirection: "row", alignItems: "center" },
+  rotBody: { marginTop: 16, gap: 14, borderTopWidth: 1, borderTopColor: Colors.hairline, paddingTop: 16 },
+  rotTitle: { fontSize: 15, fontWeight: "700", color: Colors.textPrimary },
+  rotHint: { fontSize: 12, color: Colors.textFaint, lineHeight: 17, marginTop: 3 },
+  rotPresets: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  presetBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9, backgroundColor: Colors.warmSurface, borderWidth: 1, borderColor: Colors.warmBorder },
+  presetText: { fontSize: 12, fontWeight: "700", color: Colors.textPrimary },
+  rotRow: { flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" },
+  rotLabel: { fontSize: 13, fontWeight: "700", color: Colors.textBody },
+  rotDateInput: { width: 140 },
+  rotGap: { width: 16 },
+  rotSubLabel: { fontSize: 12, fontWeight: "700", color: Colors.textSubtle, textTransform: "uppercase", letterSpacing: 0.4 },
+  switch: { width: 46, height: 28, borderRadius: 14, backgroundColor: Colors.warmBorder, padding: 3, justifyContent: "center" },
+  switchOn: { backgroundColor: Colors.primary },
+  knob: { width: 22, height: 22, borderRadius: 11, backgroundColor: "#fff" },
+  knobOn: { alignSelf: "flex-end" },
+  stepper: { flexDirection: "row", alignItems: "center", gap: 4 },
+  stepBtn: { width: 32, height: 32, borderRadius: 8, backgroundColor: Colors.warmSurface, borderWidth: 1, borderColor: Colors.warmBorder, alignItems: "center", justifyContent: "center" },
+  stepVal: { minWidth: 28, textAlign: "center", fontSize: 15, fontWeight: "700", color: Colors.textPrimary, fontVariant: ["tabular-nums"] },
 
   weekRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10, flexWrap: "wrap" },
   breakRow: { flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" },

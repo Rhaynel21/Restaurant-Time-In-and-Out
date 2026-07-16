@@ -8,6 +8,8 @@ import { db } from "@/lib/firebase";
 // rate, status) that seed the Org and Payroll modules.
 
 export type EmployeeStatus = "active" | "inactive";
+export type Gender = "" | "male" | "female" | "other";
+export type CivilStatus = "" | "single" | "married" | "widowed" | "separated";
 
 export type EmployeeMaster = {
   employeeId: string;
@@ -26,6 +28,18 @@ export type EmployeeMaster = {
   hireDate: string | null; // YYYY-MM-DD
   dailyRate: number | null; // ₱ per day, for Payroll
   status: EmployeeStatus;
+  // ── 201 file: personal details ──
+  birthDate: string | null; // YYYY-MM-DD
+  gender: Gender;
+  civilStatus: CivilStatus;
+  address: string;
+  emergencyContactName: string;
+  emergencyContactPhone: string;
+  // ── 201 file: PH government IDs ──
+  sss: string; // SSS number
+  philhealth: string; // PhilHealth number
+  pagibig: string; // Pag-IBIG (HDMF) number
+  tin: string; // BIR TIN
   createdAt: Date | null;
 };
 
@@ -63,6 +77,18 @@ function toMaster(id: string, data: Record<string, unknown>): EmployeeMaster {
     hireDate: typeof data.hireDate === "string" ? data.hireDate : null,
     dailyRate: typeof data.dailyRate === "number" ? data.dailyRate : null,
     status: data.status === "inactive" ? "inactive" : "active",
+    birthDate: typeof data.birthDate === "string" ? data.birthDate : null,
+    gender: (["male", "female", "other"].includes(data.gender as string) ? data.gender : "") as Gender,
+    civilStatus: (["single", "married", "widowed", "separated"].includes(data.civilStatus as string)
+      ? data.civilStatus
+      : "") as CivilStatus,
+    address: str(data.address),
+    emergencyContactName: str(data.emergencyContactName),
+    emergencyContactPhone: str(data.emergencyContactPhone),
+    sss: str(data.sss),
+    philhealth: str(data.philhealth),
+    pagibig: str(data.pagibig),
+    tin: str(data.tin),
     createdAt: tsToDate(data.createdAt),
   };
 }
@@ -85,6 +111,16 @@ export function blankEmployee(): EmployeeMaster {
     hireDate: null,
     dailyRate: null,
     status: "active",
+    birthDate: null,
+    gender: "",
+    civilStatus: "",
+    address: "",
+    emergencyContactName: "",
+    emergencyContactPhone: "",
+    sss: "",
+    philhealth: "",
+    pagibig: "",
+    tin: "",
     createdAt: null,
   };
 }
@@ -131,6 +167,16 @@ export async function saveEmployeeMaster(rec: EmployeeMaster, updatedBy: string)
       hireDate: rec.hireDate,
       dailyRate: rec.dailyRate,
       status: rec.status,
+      birthDate: rec.birthDate,
+      gender: rec.gender,
+      civilStatus: rec.civilStatus,
+      address: rec.address.trim(),
+      emergencyContactName: rec.emergencyContactName.trim(),
+      emergencyContactPhone: rec.emergencyContactPhone.trim(),
+      sss: rec.sss.trim(),
+      philhealth: rec.philhealth.trim(),
+      pagibig: rec.pagibig.trim(),
+      tin: rec.tin.trim(),
       updatedBy,
       updatedAt: serverTimestamp(),
       ...(existing.exists() ? {} : { createdAt: serverTimestamp() }),
