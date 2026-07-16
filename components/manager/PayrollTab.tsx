@@ -8,7 +8,7 @@ import { getAttendanceForMonth } from "@/lib/attendance";
 import { buildDtr } from "@/lib/dtr";
 import { EmployeeMaster, subscribeEmployeeMasters } from "@/lib/hr";
 import { inScope } from "@/lib/org";
-import { PH_RATES_VERSION, Payslip as PayslipData, computePayslip, peso } from "@/lib/ph-payroll";
+import { PH_RATES_VERSION, PayBasis, PayInputs, Payslip as PayslipData, computePayslip, peso } from "@/lib/ph-payroll";
 import { getSchedule } from "@/lib/schedules";
 
 type PayRow = {
@@ -16,6 +16,10 @@ type PayRow = {
   name: string;
   department: string;
   branch: string;
+  tin: string;
+  sss: string;
+  philhealth: string;
+  pagibig: string;
   slip: PayslipData;
 };
 
@@ -58,12 +62,30 @@ export function PayrollTab({ allowed }: { allowed: Set<string> | null }) {
             getAttendanceForMonth(e.employeeId, y, mo - 1),
           ]);
           const dtr = buildDtr(y, mo - 1, schedule, records);
-          const slip = computePayslip(dtr, e.dailyRate ?? 0);
+          const pay: PayBasis = {
+            type: e.payType,
+            dailyRate: e.dailyRate ?? (e.hourlyRate != null ? e.hourlyRate * 8 : 0),
+            hourlyRate: e.hourlyRate ?? (e.dailyRate != null ? e.dailyRate / 8 : 0),
+          };
+          const inputs: PayInputs = {
+            allowanceTaxable: e.allowanceTaxable,
+            deMinimis: e.deMinimis,
+            otherDeductions: [
+              { label: "SSS Loan", amount: e.sssLoan },
+              { label: "Pag-IBIG Loan", amount: e.pagibigLoan },
+              { label: "Cash Advance", amount: e.cashAdvance },
+            ],
+          };
+          const slip = computePayslip(dtr, pay, inputs);
           return {
             id: e.employeeId,
             name: e.fullName,
             department: e.department,
             branch: e.branchName ?? "",
+            tin: e.tin,
+            sss: e.sss,
+            philhealth: e.philhealth,
+            pagibig: e.pagibig,
             slip,
           } as PayRow;
         }),
@@ -92,40 +114,73 @@ export function PayrollTab({ allowed }: { allowed: Set<string> | null }) {
     );
   }, [rows]);
 
-  const exportCsv = () => {
-    if (!rows || Platform.OS !== "web") return;
-    const head = [
-      "Employee ID", "Name", "Branch", "Department", "Days", "Hourly Rate", "Basic Pay",
-      "OT Hrs", "OT Pay", "Night Hrs", "Night Diff", "Reg Holiday", "Special Holiday", "Gross Pay",
-      "SSS (EE)", "PhilHealth (EE)", "Pag-IBIG (EE)", "Total Contributions", "Taxable Income",
-      "Withholding Tax", "Total Deductions", "Net Pay",
-      "SSS (ER)", "PhilHealth (ER)", "Pag-IBIG (ER)", "Employer Total", "13th Month Accrual",
-    ];
-    const lines = [head.join(",")];
-    for (const r of rows) {
-      const s = r.slip;
-      lines.push(
-        [
-          r.id, r.name, r.branch, r.department, s.daysPresent, s.hourlyRate, s.basicPay,
-          s.otHours, s.otPay, s.nightHours, s.nightPay, s.regHolidayPay, s.specialHolidayPay, s.grossPay,
-          s.sssEE, s.philhealthEE, s.pagibigEE, s.totalContributions, s.taxableIncome,
-          s.withholdingTax, s.totalDeductions, s.netPay,
-          s.sssER, s.philhealthER, s.pagibigER, s.employerContributions, s.thirteenthMonthAccrual,
-        ]
-          .map((v) => {
-            const str = String(v);
-            return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
-          })
-          .join(","),
-      );
-    }
+  const csvDownload = (filename: string, head: string[], records: (string | number)[][]) => {
+    if (Platform.OS !== "web") return;
+    const esc = (v: string | number) => {
+      const s = String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = [head.map(esc).join(","), ...records.map((r) => r.map(esc).join(","))];
     const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `Payroll_Register_${label.replace(/\s+/g, "_")}.csv`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
+  };
+  const monthTag = () => label.replace(/\s+/g, "_");
+
+  // Full payroll register — every earning, deduction, and employer share.
+  const exportRegister = () => {
+    if (!rows) return;
+    const head = [
+      "Employee ID", "Name", "Branch", "Department", "Pay Days", "Basic Pay",
+      "OT Pay", "Night Diff", "Reg Holiday", "Special Holiday", "Allowance", "De-Minimis", "Gross Pay",
+      "SSS (EE)", "PhilHealth (EE)", "Pag-IBIG (EE)", "Withholding Tax", "Loans/Advances", "Total Deductions", "Net Pay",
+      "SSS (ER)", "PhilHealth (ER)", "Pag-IBIG (ER)", "Employer Total", "13th Month Accrual",
+    ];
+    csvDownload(
+      `Payroll_Register_${monthTag()}.csv`,
+      head,
+      rows.map((r) => {
+        const s = r.slip;
+        return [
+          r.id, r.name, r.branch, r.department, s.daysPresent, s.basicPay,
+          s.otPay, s.nightPay, s.regHolidayPay, s.specialHolidayPay, s.allowanceTaxable, s.deMinimis, s.grossPay,
+          s.sssEE, s.philhealthEE, s.pagibigEE, s.withholdingTax, s.totalOtherDeductions, s.totalDeductions, s.netPay,
+          s.sssER, s.philhealthER, s.pagibigER, s.employerContributions, s.thirteenthMonthAccrual,
+        ];
+      }),
+    );
+  };
+
+  // BIR alphalist (1604-C style) — taxable vs non-taxable compensation + tax.
+  const exportAlphalist = () => {
+    if (!rows) return;
+    const head = ["TIN", "Employee ID", "Name", "Gross Compensation", "Non-Taxable (contrib + de-minimis)", "Taxable Income", "Tax Withheld"];
+    csvDownload(
+      `BIR_Alphalist_${monthTag()}.csv`,
+      head,
+      rows.map((r) => {
+        const s = r.slip;
+        return [r.tin, r.id, r.name, s.grossPay, Math.round((s.totalContributions + s.deMinimis) * 100) / 100, s.taxableIncome, s.withholdingTax];
+      }),
+    );
+  };
+
+  // Statutory contribution schedule — feeds SSS R3 / PhilHealth RF1 / Pag-IBIG MCRF.
+  const exportContributions = () => {
+    if (!rows) return;
+    const head = ["Employee ID", "Name", "SSS No.", "SSS (EE)", "SSS (ER)", "PhilHealth No.", "PhilHealth (EE)", "PhilHealth (ER)", "Pag-IBIG No.", "Pag-IBIG (EE)", "Pag-IBIG (ER)"];
+    csvDownload(
+      `Contributions_${monthTag()}.csv`,
+      head,
+      rows.map((r) => {
+        const s = r.slip;
+        return [r.id, r.name, r.sss, s.sssEE, s.sssER, r.philhealth, s.philhealthEE, s.philhealthER, r.pagibig, s.pagibigEE, s.pagibigER];
+      }),
+    );
   };
 
   return (
@@ -146,10 +201,22 @@ export function PayrollTab({ allowed }: { allowed: Set<string> | null }) {
           <Pressable style={styles.genBtn} disabled={loading} onPress={compute}>
             <Text style={styles.genText}>{loading ? "Computing…" : "Compute Payroll"}</Text>
           </Pressable>
-          <Pressable style={[styles.ghostBtn, !rows && styles.ghostDisabled]} disabled={!rows} onPress={exportCsv}>
-            <MaterialCommunityIcons name="file-delimited-outline" size={16} color={Colors.primaryDark} />
-            <Text style={styles.ghostText}>CSV</Text>
-          </Pressable>
+          {Platform.OS === "web" && (
+            <>
+              <Pressable style={[styles.ghostBtn, !rows && styles.ghostDisabled]} disabled={!rows} onPress={exportRegister}>
+                <MaterialCommunityIcons name="table-arrow-down" size={16} color={Colors.primaryDark} />
+                <Text style={styles.ghostText}>Register</Text>
+              </Pressable>
+              <Pressable style={[styles.ghostBtn, !rows && styles.ghostDisabled]} disabled={!rows} onPress={exportAlphalist}>
+                <MaterialCommunityIcons name="file-certificate-outline" size={16} color={Colors.primaryDark} />
+                <Text style={styles.ghostText}>BIR Alphalist</Text>
+              </Pressable>
+              <Pressable style={[styles.ghostBtn, !rows && styles.ghostDisabled]} disabled={!rows} onPress={exportContributions}>
+                <MaterialCommunityIcons name="shield-account-outline" size={16} color={Colors.primaryDark} />
+                <Text style={styles.ghostText}>Contributions</Text>
+              </Pressable>
+            </>
+          )}
         </View>
         <Text style={styles.hint}>
           DOLE-based pay (basic + overtime, night differential, and holiday premiums from each employee&apos;s DTR) less
@@ -229,6 +296,8 @@ function Payslip({ slip }: { slip: PayslipData }) {
           {slip.nightPay > 0 && <LineItem label={`Night differential (${slip.nightHours} h)`} value={peso(slip.nightPay)} />}
           {slip.regHolidayPay > 0 && <LineItem label="Regular holiday" value={peso(slip.regHolidayPay)} />}
           {slip.specialHolidayPay > 0 && <LineItem label="Special holiday" value={peso(slip.specialHolidayPay)} />}
+          {slip.allowanceTaxable > 0 && <LineItem label="Taxable allowance" value={peso(slip.allowanceTaxable)} />}
+          {slip.deMinimis > 0 && <LineItem label="De-minimis (non-taxable)" value={peso(slip.deMinimis)} />}
           <LineItem label="Gross Pay" value={peso(slip.grossPay)} strong />
         </View>
 
@@ -238,6 +307,9 @@ function Payslip({ slip }: { slip: PayslipData }) {
           <LineItem label="PhilHealth" value={peso(slip.philhealthEE)} />
           <LineItem label="Pag-IBIG" value={peso(slip.pagibigEE)} />
           <LineItem label="Withholding tax" value={peso(slip.withholdingTax)} />
+          {slip.otherDeductions.map((d) => (
+            <LineItem key={d.label} label={d.label} value={peso(d.amount)} />
+          ))}
           <LineItem label="Total Deductions" value={peso(slip.totalDeductions)} strong />
         </View>
       </View>

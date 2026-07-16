@@ -121,6 +121,12 @@ export function EmployeesTab({ managerName, scope }: { managerName: string; scop
 
   const patch = (p: Partial<EmployeeMaster>) => setEditing((prev) => (prev ? { ...prev, ...p } : prev));
 
+  // Numeric field setter: nullable rates → null when blank; amounts → 0.
+  const setNum = (key: keyof EmployeeMaster, nullable: boolean) => (t: string) => {
+    const n = parseFloat(t.replace(/[^0-9.]/g, ""));
+    patch({ [key]: Number.isFinite(n) ? n : nullable ? null : 0 } as Partial<EmployeeMaster>);
+  };
+
   const save = async () => {
     if (!editing) return;
     if (isNew && !editing.employeeId.trim()) {
@@ -276,24 +282,56 @@ export function EmployeesTab({ managerName, scope }: { managerName: string; scop
             </Field>
           )}
 
+          <Field label="Hire date">
+            <TextInput style={styles.input} value={e.hireDate ?? ""} onChangeText={(t) => patch({ hireDate: t || null })} placeholder="YYYY-MM-DD" placeholderTextColor={Colors.textPlaceholder} />
+          </Field>
+        </Card>
+
+        {/* ── Compensation & Deductions (feeds Payroll) ── */}
+        <SectionTitle>Compensation &amp; Deductions</SectionTitle>
+        <Card>
+          <Field label="Pay basis">
+            <View style={styles.segRow}>
+              {(["daily", "hourly"] as const).map((p) => (
+                <Pressable key={p} style={[styles.seg, e.payType === p && styles.segOn]} onPress={() => patch({ payType: p })}>
+                  <Text style={[styles.segText, e.payType === p && styles.segTextOn]}>{p}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </Field>
           <View style={styles.formGrid}>
-            <Field label="Hire date" grow>
-              <TextInput style={styles.input} value={e.hireDate ?? ""} onChangeText={(t) => patch({ hireDate: t || null })} placeholder="YYYY-MM-DD" placeholderTextColor={Colors.textPlaceholder} />
+            <Field label="Daily rate (₱ / day)" grow>
+              <TextInput style={styles.input} value={e.dailyRate != null ? String(e.dailyRate) : ""} keyboardType="numeric" onChangeText={setNum("dailyRate", true)} placeholder="1000" placeholderTextColor={Colors.textPlaceholder} />
             </Field>
-            <Field label="Daily rate (₱)" grow>
-              <TextInput
-                style={styles.input}
-                value={e.dailyRate != null ? String(e.dailyRate) : ""}
-                keyboardType="numeric"
-                onChangeText={(t) => {
-                  const n = parseFloat(t.replace(/[^0-9.]/g, ""));
-                  patch({ dailyRate: Number.isFinite(n) ? n : null });
-                }}
-                placeholder="1000"
-                placeholderTextColor={Colors.textPlaceholder}
-              />
+            <Field label="Hourly rate (₱ / hr)" grow>
+              <TextInput style={styles.input} value={e.hourlyRate != null ? String(e.hourlyRate) : ""} keyboardType="numeric" onChangeText={setNum("hourlyRate", true)} placeholder="125" placeholderTextColor={Colors.textPlaceholder} />
             </Field>
           </View>
+          <Text style={styles.scopeNote}>
+            {e.payType === "hourly"
+              ? "Hourly — basic pay = hourly rate × regular hours worked (from the DTR); overtime is paid on top."
+              : "Daily — basic pay = daily rate × days present. The hourly rate (rate ÷ 8) is used for OT & night-differential premiums."}
+          </Text>
+
+          <View style={styles.formGrid}>
+            <Field label="Taxable allowance (₱ / mo)" grow>
+              <TextInput style={styles.input} value={e.allowanceTaxable ? String(e.allowanceTaxable) : ""} keyboardType="numeric" onChangeText={setNum("allowanceTaxable", false)} placeholder="0" placeholderTextColor={Colors.textPlaceholder} />
+            </Field>
+            <Field label="De-minimis / non-taxable (₱ / mo)" grow>
+              <TextInput style={styles.input} value={e.deMinimis ? String(e.deMinimis) : ""} keyboardType="numeric" onChangeText={setNum("deMinimis", false)} placeholder="0" placeholderTextColor={Colors.textPlaceholder} />
+            </Field>
+          </View>
+          <View style={styles.formGrid}>
+            <Field label="SSS loan (₱ / mo)" grow>
+              <TextInput style={styles.input} value={e.sssLoan ? String(e.sssLoan) : ""} keyboardType="numeric" onChangeText={setNum("sssLoan", false)} placeholder="0" placeholderTextColor={Colors.textPlaceholder} />
+            </Field>
+            <Field label="Pag-IBIG loan (₱ / mo)" grow>
+              <TextInput style={styles.input} value={e.pagibigLoan ? String(e.pagibigLoan) : ""} keyboardType="numeric" onChangeText={setNum("pagibigLoan", false)} placeholder="0" placeholderTextColor={Colors.textPlaceholder} />
+            </Field>
+          </View>
+          <Field label="Cash advance / other deduction (₱ / mo)">
+            <TextInput style={styles.input} value={e.cashAdvance ? String(e.cashAdvance) : ""} keyboardType="numeric" onChangeText={setNum("cashAdvance", false)} placeholder="0" placeholderTextColor={Colors.textPlaceholder} />
+          </Field>
         </Card>
 
         {/* ── Personal details ── */}

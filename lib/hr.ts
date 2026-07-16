@@ -8,6 +8,7 @@ import { db } from "@/lib/firebase";
 // rate, status) that seed the Org and Payroll modules.
 
 export type EmployeeStatus = "active" | "inactive";
+export type PayType = "daily" | "hourly";
 export type Gender = "" | "male" | "female" | "other";
 export type CivilStatus = "" | "single" | "married" | "widowed" | "separated";
 
@@ -26,7 +27,16 @@ export type EmployeeMaster = {
   branchName: string | null;
   accessRole: AccessRole;
   hireDate: string | null; // YYYY-MM-DD
-  dailyRate: number | null; // ₱ per day, for Payroll
+  // ── Payroll: pay basis + rates ──
+  payType: PayType; // "daily" → rate × days present; "hourly" → rate × hours worked
+  dailyRate: number | null; // ₱ per day
+  hourlyRate: number | null; // ₱ per hour (used when payType = "hourly")
+  // ── Payroll: monthly allowances & recurring deductions ──
+  allowanceTaxable: number; // taxable allowance (added to gross + tax base)
+  deMinimis: number; // non-taxable / de-minimis allowance (gross only)
+  sssLoan: number; // monthly SSS salary-loan amortization
+  pagibigLoan: number; // monthly Pag-IBIG loan amortization
+  cashAdvance: number; // cash advance / other recurring deduction
   status: EmployeeStatus;
   // ── 201 file: personal details ──
   birthDate: string | null; // YYYY-MM-DD
@@ -75,7 +85,14 @@ function toMaster(id: string, data: Record<string, unknown>): EmployeeMaster {
     branchName: typeof data.branchName === "string" ? data.branchName : null,
     accessRole: str(data.accessRole, "staff") as AccessRole,
     hireDate: typeof data.hireDate === "string" ? data.hireDate : null,
+    payType: data.payType === "hourly" ? "hourly" : "daily",
     dailyRate: typeof data.dailyRate === "number" ? data.dailyRate : null,
+    hourlyRate: typeof data.hourlyRate === "number" ? data.hourlyRate : null,
+    allowanceTaxable: typeof data.allowanceTaxable === "number" ? data.allowanceTaxable : 0,
+    deMinimis: typeof data.deMinimis === "number" ? data.deMinimis : 0,
+    sssLoan: typeof data.sssLoan === "number" ? data.sssLoan : 0,
+    pagibigLoan: typeof data.pagibigLoan === "number" ? data.pagibigLoan : 0,
+    cashAdvance: typeof data.cashAdvance === "number" ? data.cashAdvance : 0,
     status: data.status === "inactive" ? "inactive" : "active",
     birthDate: typeof data.birthDate === "string" ? data.birthDate : null,
     gender: (["male", "female", "other"].includes(data.gender as string) ? data.gender : "") as Gender,
@@ -109,7 +126,14 @@ export function blankEmployee(): EmployeeMaster {
     branchName: null,
     accessRole: "staff",
     hireDate: null,
+    payType: "daily",
     dailyRate: null,
+    hourlyRate: null,
+    allowanceTaxable: 0,
+    deMinimis: 0,
+    sssLoan: 0,
+    pagibigLoan: 0,
+    cashAdvance: 0,
     status: "active",
     birthDate: null,
     gender: "",
@@ -165,7 +189,14 @@ export async function saveEmployeeMaster(rec: EmployeeMaster, updatedBy: string)
       branchName: rec.branchName,
       accessRole: rec.accessRole,
       hireDate: rec.hireDate,
+      payType: rec.payType,
       dailyRate: rec.dailyRate,
+      hourlyRate: rec.hourlyRate,
+      allowanceTaxable: rec.allowanceTaxable,
+      deMinimis: rec.deMinimis,
+      sssLoan: rec.sssLoan,
+      pagibigLoan: rec.pagibigLoan,
+      cashAdvance: rec.cashAdvance,
       status: rec.status,
       birthDate: rec.birthDate,
       gender: rec.gender,

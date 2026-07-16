@@ -62,6 +62,23 @@ export function withholdingTaxMonthly(taxable: number): number {
   return round2(183541.8 + (taxable - 666667) * 0.35);
 }
 
+// A recurring or one-off deduction taken from net pay (SSS/Pag-IBIG loan
+// amortization, cash advance, uniform, etc.). These are NOT tax-deductible.
+export type OtherDeduction = { label: string; amount: number };
+
+// Extra pay inputs that don't come from the DTR: monthly allowances and any
+// recurring deductions carried on the employee's record.
+export type PayInputs = {
+  allowanceTaxable?: number; // taxable allowance (added to gross AND tax base)
+  deMinimis?: number; // non-taxable / de-minimis allowance (added to gross only)
+  otherDeductions?: OtherDeduction[]; // loans, cash advances, etc.
+};
+
+// How the employee is paid. Basic pay = daily rate × days present (daily), or
+// hourly rate × regular hours worked (hourly). The other rate is derived from
+// the 8-hour day so premiums/holiday pay work either way.
+export type PayBasis = { type: "daily" | "hourly"; dailyRate: number; hourlyRate: number };
+
 export type Payslip = {
   // Earnings
   daysPresent: number;
@@ -73,6 +90,8 @@ export type Payslip = {
   nightPay: number;
   regHolidayPay: number;
   specialHolidayPay: number;
+  allowanceTaxable: number;
+  deMinimis: number;
   grossPay: number;
   // Employee deductions
   sssEE: number;
@@ -81,6 +100,8 @@ export type Payslip = {
   totalContributions: number;
   taxableIncome: number;
   withholdingTax: number;
+  otherDeductions: OtherDeduction[];
+  totalOtherDeductions: number;
   totalDeductions: number;
   netPay: number;
   // Employer share (cost to company, not deducted from the employee)
@@ -93,14 +114,21 @@ export type Payslip = {
   thirteenthMonthAccrual: number;
 };
 
-// Compute a full monthly payslip from a DTR and the employee's daily rate.
-// Premiums come straight from the DTR's DOLE minute tallies; statutory
-// deductions and tax are layered on top to arrive at net pay.
-export function computePayslip(dtr: Dtr, dailyRate: number): Payslip {
+// Compute a full monthly payslip from a DTR, the employee's daily rate, and any
+// allowances / recurring deductions. Premiums come from the DTR's DOLE minute
+// tallies; statutory deductions and tax are layered on to arrive at net pay.
+export function computePayslip(dtr: Dtr, pay: PayBasis, inputs: PayInputs = {}): Payslip {
   const { summary, rows } = dtr;
-  const hourlyRate = round2(dailyRate / HOURS_PER_DAY);
+  // Derive both rates from the 8-hour day so premiums work for either basis.
+  const hourlyRate = pay.type === "hourly" ? round2(pay.hourlyRate) : round2(pay.dailyRate / HOURS_PER_DAY);
+  const dailyRate = pay.type === "daily" ? round2(pay.dailyRate) : round2(pay.hourlyRate * HOURS_PER_DAY);
 
-  const basicPay = round2(dailyRate * summary.present);
+  // Daily-paid: rate × days present. Hourly-paid: rate × regular hours (worked
+  // hours net of overtime, which is paid separately at a premium below).
+  const basicPay =
+    pay.type === "hourly"
+      ? round2((Math.max(0, summary.totalMinutes - summary.otMinutes) / 60) * hourlyRate)
+      : round2(dailyRate * summary.present);
   const otHours = round2(summary.otMinutes / 60);
   const otPay = round2(otHours * hourlyRate * (1 + OT_PREMIUM) - otHours * hourlyRate);
   const nightHours = round2(summary.nightMinutes / 60);
@@ -116,7 +144,7 @@ export function computePayslip(dtr: Dtr, dailyRate: number): Payslip {
     if (!r.holiday) continue;
     const worked = r.status === "present";
     if (r.holiday.type === "regular") {
-      regHolidayPay += dailyRate; // premium (worked) or mandated pay (unworked)
+      regHolidayPay += dailyRate * REG_HOLIDAY_PREMIUM; // premium (worked) or mandated pay (unworked)
     } else if (worked) {
       specialHolidayPay += dailyRate * SPECIAL_HOLIDAY_PREMIUM;
     }
@@ -124,19 +152,29 @@ export function computePayslip(dtr: Dtr, dailyRate: number): Payslip {
   regHolidayPay = round2(regHolidayPay);
   specialHolidayPay = round2(specialHolidayPay);
 
-  const grossPay = round2(basicPay + otPay + nightPay + regHolidayPay + specialHolidayPay);
+  // Allowances + recurring deductions (from the employee's record).
+  const allowanceTaxable = round2(Math.max(0, inputs.allowanceTaxable ?? 0));
+  const deMinimis = round2(Math.max(0, inputs.deMinimis ?? 0));
+  const otherDeductions = (inputs.otherDeductions ?? [])
+    .filter((d) => d.amount > 0)
+    .map((d) => ({ label: d.label, amount: round2(d.amount) }));
+  const totalOtherDeductions = round2(otherDeductions.reduce((s, d) => s + d.amount, 0));
 
-  // Statutory contributions: SSS/Pag-IBIG on total monthly compensation,
+  // Taxable compensation excludes the non-taxable de-minimis allowance.
+  const taxableComp = round2(basicPay + otPay + nightPay + regHolidayPay + specialHolidayPay + allowanceTaxable);
+  const grossPay = round2(taxableComp + deMinimis);
+
+  // Statutory contributions: SSS/Pag-IBIG on taxable monthly compensation,
   // PhilHealth on the basic salary component.
-  const sss = sssContribution(grossPay);
+  const sss = sssContribution(taxableComp);
   const ph = philhealthContribution(basicPay);
-  const pagibig = pagibigContribution(grossPay);
+  const pagibig = pagibigContribution(taxableComp);
   const totalContributions = round2(sss.ee + ph.ee + pagibig.ee);
 
-  const taxableIncome = round2(Math.max(0, grossPay - totalContributions));
+  const taxableIncome = round2(Math.max(0, taxableComp - totalContributions));
   const withholdingTax = withholdingTaxMonthly(taxableIncome);
 
-  const totalDeductions = round2(totalContributions + withholdingTax);
+  const totalDeductions = round2(totalContributions + withholdingTax + totalOtherDeductions);
   const netPay = round2(grossPay - totalDeductions);
 
   const employerContributions = round2(sss.er + ph.er + pagibig.er);
@@ -151,6 +189,8 @@ export function computePayslip(dtr: Dtr, dailyRate: number): Payslip {
     nightPay,
     regHolidayPay,
     specialHolidayPay,
+    allowanceTaxable,
+    deMinimis,
     grossPay,
     sssEE: sss.ee,
     philhealthEE: ph.ee,
@@ -158,6 +198,8 @@ export function computePayslip(dtr: Dtr, dailyRate: number): Payslip {
     totalContributions,
     taxableIncome,
     withholdingTax,
+    otherDeductions,
+    totalOtherDeductions,
     totalDeductions,
     netPay,
     sssER: sss.er,
