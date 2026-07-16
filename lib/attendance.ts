@@ -31,7 +31,7 @@ export type EmployeeProfile = {
   brandId: string | null; // org scope: brand assignment
   branchId: string | null;
   branchName: string | null;
-  accessRole: "owner" | "staff" | "manager" | "admin"; // app access level
+  accessRole: "owner" | "staff" | "manager" | "hr" | "admin"; // app access level
 };
 
 export type AttendanceRecord = {

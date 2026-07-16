@@ -30,6 +30,9 @@ const ACCOUNTS = [
   // ── Admin ──
   { employeeId: "ADMIN-001", fullName: "Qui Admin",     email: "admin@qui.local",    phone: "+63 917 000 0001", role: "Administrator",  accessRole: "admin",   branchId: "kio-bgc",    branchName: "Qui - BGC",         password: "admin123" },
 
+  // ── HR (company-wide people + payroll, not org/system settings) ──
+  { employeeId: "HR-001",    fullName: "Hazel Ramos",     email: "hr@qui.local",       phone: "+63 917 000 0011", role: "HR Officer",     accessRole: "hr",      branchId: "kio-bgc",    branchName: "Qui - BGC",         password: "hr123456" },
+
   // ── Managers (one per branch) ──
   { employeeId: "MGR-001",   fullName: "Maria Santos",    email: "manager@qui.local",  phone: "+63 917 000 0002", role: "Branch Manager", accessRole: "manager", branchId: "kio-bgc",    branchName: "Qui - BGC",         password: "manager123" },
   { employeeId: "MGR-002",   fullName: "Carlo Mendoza",   email: "carlo@qui.local",    phone: "+63 917 000 0005", role: "Branch Manager", accessRole: "manager", branchId: "kio-makati", branchName: "Qui - Makati",      password: "manager123" },

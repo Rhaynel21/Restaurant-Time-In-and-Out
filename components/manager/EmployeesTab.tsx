@@ -10,7 +10,7 @@ import { LOAN_TYPES, Loan, loanBalanceAfter, loanTypeLabel } from "@/lib/loans";
 import { OrgTree, Scope, subscribeOrgTree } from "@/lib/org";
 import { peso } from "@/lib/ph-payroll";
 
-const ACCESS_ROLES: AccessRole[] = ["owner", "admin", "manager", "staff"];
+const ACCESS_ROLES: AccessRole[] = ["owner", "admin", "hr", "manager", "staff"];
 
 function thisMonthValue() {
   const d = new Date();
@@ -263,7 +263,7 @@ export function EmployeesTab({ managerName, scope }: { managerName: string; scop
             <Text style={styles.scopeNote}>Owner sees every company, brand, and branch.</Text>
           )}
 
-          {e.accessRole === "admin" && (
+          {(e.accessRole === "admin" || e.accessRole === "hr") && (
             <Field label="Company (scope — all its brands & branches)">
               {org.companies.length === 0 ? (
                 <Text style={styles.scopeNote}>No companies yet — set up the Org tab first.</Text>

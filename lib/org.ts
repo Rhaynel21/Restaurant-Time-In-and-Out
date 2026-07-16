@@ -146,7 +146,9 @@ export type ScopedProfile = {
 //   staff   → just their branch (mobile app)
 export function resolveScope(me: ScopedProfile): Scope {
   if (me.accessRole === "owner") return { level: "owner", companyId: null, branchId: null };
-  if (me.accessRole === "admin") return { level: "company", companyId: me.companyId ?? null, branchId: null };
+  // Admin and HR both see their whole company (all brands + branches).
+  if (me.accessRole === "admin" || me.accessRole === "hr")
+    return { level: "company", companyId: me.companyId ?? null, branchId: null };
   return { level: "branch", companyId: me.companyId ?? null, branchId: me.branchId ?? null };
 }
 

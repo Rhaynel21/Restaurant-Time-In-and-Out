@@ -14,7 +14,7 @@ import { doc, getDoc, getDocs, collection, limit, query, serverTimestamp, setDoc
 import { EmployeeProfile } from "@/lib/attendance";
 import { auth, db } from "@/lib/firebase";
 
-export type AccessRole = "owner" | "staff" | "manager" | "admin";
+export type AccessRole = "owner" | "staff" | "manager" | "hr" | "admin";
 
 export const AUTH_ERRORS = {
   NOT_FOUND: "AUTH_NOT_FOUND",

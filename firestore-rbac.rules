@@ -1,0 +1,116 @@
+rules_version = '2';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Qui / Kitchen-In-and-Out — ROLE-BASED ACCESS CONTROL (RBAC)
+//
+// Roles (from the Firebase Auth token custom claims — set by
+// `hikvision-bridge/set-claims.js`):
+//   owner   → everything, all companies
+//   admin   → their whole company: HR + org structure + system settings
+//   hr      → their whole company: people + payroll + leave/OT, but NOT org
+//             structure / devices
+//   manager → their branch: approve leave/OT for their branch, view
+//   staff    → only their own record / DTR / payslip
+//
+// ── DEPLOY ORDER (important) ──────────────────────────────────────────────
+//   1. cd hikvision-bridge && npm run seed:claims   (sets the token claims)
+//   2. Everyone RE-LOGS IN (a fresh sign-in mints a token with the claims)
+//   3. Replace firestore.rules with THIS file and deploy:
+//        firebase deploy --only firestore:rules
+//   If you deploy before step 1+2, users have no `role` claim → locked out.
+//
+// Login keeps working: the app resolves the profile with a
+// where('email','==',<self>) query, which returns the caller's OWN doc — always
+// readable below.
+// The Hikvision bridge uses the Admin SDK, which BYPASSES these rules, so it can
+// still write attendance / deviceStatus / alarms.
+// ═══════════════════════════════════════════════════════════════════════════
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn()  { return request.auth != null; }
+    function claim(k)    { return signedIn() ? request.auth.token[k] : null; }
+    function role()      { return claim('role'); }
+    function isOwner()   { return role() == 'owner'; }
+    function isAdmin()   { return role() in ['owner', 'admin']; }
+    function isHR()      { return role() in ['owner', 'admin', 'hr']; }
+    function isManager() { return role() in ['owner', 'admin', 'hr', 'manager']; }
+    function myEmp()     { return claim('employeeId'); }
+    function myBranch()  { return claim('branchId'); }
+    // A manager may act on a doc only within their own branch; HR+ anywhere.
+    function inMyBranch(branchId) { return isHR() || (role() == 'manager' && branchId == myBranch()); }
+
+    // ── Employees / 201 master ────────────────────────────────────────────
+    // Read: managers+ (portal needs the roster); staff only their own doc.
+    // Write: HR/admin manage records + pay; a user may self-register (staff) and
+    // edit a few of their own contact fields.
+    match /employees/{id} {
+      allow read: if isManager() || (signedIn() && id == myEmp());
+      allow create: if isHR()
+        || (signedIn()
+            && request.resource.data.uid == request.auth.uid
+            && request.resource.data.accessRole == 'staff'
+            && !('dailyRate' in request.resource.data)
+            && !('hourlyRate' in request.resource.data));
+      allow delete: if isHR();
+      allow update: if isHR()
+        || (signedIn() && id == myEmp()
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['phone', 'address', 'emergencyContactName', 'emergencyContactPhone', 'updatedAt']));
+    }
+
+    // ── Attendance (bridge writes bypass rules) ───────────────────────────
+    match /attendance/{doc} {
+      allow read:  if signedIn();
+      allow write: if isHR();
+    }
+
+    // ── Leave & attendance requests: file your own; managers review THEIR
+    // branch, HR/admin review anywhere. ───────────────────────────────────
+    match /leaves/{doc} {
+      allow read:   if signedIn();
+      allow create: if signedIn() && request.resource.data.employeeId == myEmp();
+      allow update, delete: if inMyBranch(resource.data.branchId);
+    }
+    match /attendanceRequests/{doc} {
+      allow read:   if signedIn();
+      allow create: if signedIn() && request.resource.data.employeeId == myEmp();
+      allow update, delete: if inMyBranch(resource.data.branchId);
+    }
+
+    // ── Schedules: managers+ manage (branch scoping done in the UI) ───────
+    match /schedules/{doc} {
+      allow read:  if signedIn();
+      allow write: if isManager();
+    }
+
+    // ── 201 documents + memos: HR/admin ───────────────────────────────────
+    match /employeeDocuments/{doc} { allow read: if signedIn(); allow write: if isHR(); }
+    match /memos/{doc}            { allow read: if signedIn(); allow write: if isHR(); }
+
+    // ── Org hierarchy + payroll formula (stored on the company doc) ────────
+    // Org structure = admin only. HR may edit ONLY the payroll formula fields.
+    match /companies/{companyId} {
+      allow read: if signedIn();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (isHR() && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['payrollFormula', 'payrollFormulaUpdatedAt', 'updatedAt']));
+      match /brands/{brandId} {
+        allow read: if signedIn();
+        allow write: if isAdmin();
+        match /branches/{branchId} {
+          allow read: if signedIn();
+          allow write: if isAdmin();
+        }
+      }
+    }
+    match /{path=**}/brands/{brandId}    { allow read: if signedIn(); }
+    match /{path=**}/branches/{branchId} { allow read: if signedIn(); }
+
+    // ── Device health / alarms (bridge writes via Admin SDK bypass) ───────
+    match /deviceStatus/{doc} { allow read: if signedIn(); allow write: if isManager(); }
+    match /deviceAlarms/{doc} { allow read: if signedIn(); allow write: if isManager(); }
+  }
+}
