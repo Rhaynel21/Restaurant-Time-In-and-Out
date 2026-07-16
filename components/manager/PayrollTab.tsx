@@ -24,6 +24,8 @@ type PayRow = {
   sss: string;
   philhealth: string;
   pagibig: string;
+  bankName: string;
+  bankAccount: string;
   slip: PayslipData;
 };
 
@@ -124,6 +126,8 @@ export function PayrollTab({ allowed, companyId }: { allowed: Set<string> | null
             sss: e.sss,
             philhealth: e.philhealth,
             pagibig: e.pagibig,
+            bankName: e.bankName,
+            bankAccount: e.bankAccount,
             slip,
           } as PayRow;
         }),
@@ -223,6 +227,17 @@ export function PayrollTab({ allowed, companyId }: { allowed: Set<string> | null
     );
   };
 
+  // Bank / e-wallet disbursement file — for uploading net pay to the bank.
+  const exportBankFile = () => {
+    if (!rows) return;
+    const head = ["Employee ID", "Name", "Bank / e-wallet", "Account Number", "Net Pay"];
+    csvDownload(
+      `Bank_File_${monthTag()}.csv`,
+      head,
+      rows.map((r) => [r.id, r.name, r.bankName, r.bankAccount, r.slip.netPay]),
+    );
+  };
+
   // Statutory contribution schedule — feeds SSS R3 / PhilHealth RF1 / Pag-IBIG MCRF.
   const exportContributions = () => {
     if (!rows) return;
@@ -272,6 +287,10 @@ export function PayrollTab({ allowed, companyId }: { allowed: Set<string> | null
               <Pressable style={[styles.ghostBtn, !rows && styles.ghostDisabled]} disabled={!rows} onPress={exportContributions}>
                 <MaterialCommunityIcons name="shield-account-outline" size={16} color={Colors.primaryDark} />
                 <Text style={styles.ghostText}>Contributions</Text>
+              </Pressable>
+              <Pressable style={[styles.ghostBtn, !rows && styles.ghostDisabled]} disabled={!rows} onPress={exportBankFile}>
+                <MaterialCommunityIcons name="bank-outline" size={16} color={Colors.primaryDark} />
+                <Text style={styles.ghostText}>Bank File</Text>
               </Pressable>
             </>
           )}

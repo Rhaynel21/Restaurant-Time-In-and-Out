@@ -52,6 +52,9 @@ export type EmployeeMaster = {
   philhealth: string; // PhilHealth number
   pagibig: string; // Pag-IBIG (HDMF) number
   tin: string; // BIR TIN
+  // ── Payroll disbursement ──
+  bankName: string;
+  bankAccount: string;
   createdAt: Date | null;
 };
 
@@ -109,6 +112,8 @@ function toMaster(id: string, data: Record<string, unknown>): EmployeeMaster {
     philhealth: str(data.philhealth),
     pagibig: str(data.pagibig),
     tin: str(data.tin),
+    bankName: str(data.bankName),
+    bankAccount: str(data.bankAccount),
     createdAt: tsToDate(data.createdAt),
   };
 }
@@ -149,6 +154,8 @@ export function blankEmployee(): EmployeeMaster {
     philhealth: "",
     pagibig: "",
     tin: "",
+    bankName: "",
+    bankAccount: "",
     createdAt: null,
   };
 }
@@ -226,6 +233,8 @@ export async function saveEmployeeMaster(rec: EmployeeMaster, updatedBy: string)
       philhealth: rec.philhealth.trim(),
       pagibig: rec.pagibig.trim(),
       tin: rec.tin.trim(),
+      bankName: rec.bankName.trim(),
+      bankAccount: rec.bankAccount.trim(),
       updatedBy,
       updatedAt: serverTimestamp(),
       ...(existing.exists() ? {} : { createdAt: serverTimestamp() }),

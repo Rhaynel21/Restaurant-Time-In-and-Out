@@ -80,6 +80,13 @@ async function cleanDummy() {
       allow += 1;
     }
 
+    // 1b) Bank / e-wallet for the disbursement file (everyone).
+    const BANKS = ["BDO", "BPI", "Metrobank", "GCash", "Maya"];
+    await db.collection("employees").doc(e.id).set(
+      { bankName: BANKS[i % BANKS.length], bankAccount: String(1234500000 + i * 137), updatedAt: serverTimestamp() },
+      { merge: true },
+    );
+
     // 2) Loans on every 3rd employee (SSS loan + a cash advance).
     if (kind === 0) {
       await db.collection("employees").doc(e.id).set(

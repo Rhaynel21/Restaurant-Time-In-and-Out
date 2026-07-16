@@ -463,6 +463,14 @@ export function EmployeesTab({ managerName, scope }: { managerName: string; scop
               <TextInput style={styles.input} value={e.tin} onChangeText={(t) => patch({ tin: t })} placeholder="000-000-000-000" placeholderTextColor={Colors.textPlaceholder} />
             </Field>
           </View>
+          <View style={styles.formGrid}>
+            <Field label="Bank / e-wallet (for payroll)" grow>
+              <TextInput style={styles.input} value={e.bankName} onChangeText={(t) => patch({ bankName: t })} placeholder="BDO / GCash" placeholderTextColor={Colors.textPlaceholder} />
+            </Field>
+            <Field label="Account number" grow>
+              <TextInput style={styles.input} value={e.bankAccount} onChangeText={(t) => patch({ bankAccount: t })} placeholder="0000-0000-0000" placeholderTextColor={Colors.textPlaceholder} />
+            </Field>
+          </View>
         </Card>
 
         <View style={styles.formActions}>
