@@ -165,6 +165,19 @@ export function subscribeEmployeeMasters(
   );
 }
 
+// Live subscription to a single employee's master record (for self-service).
+export function subscribeEmployeeMaster(
+  employeeId: string,
+  onChange: (employee: EmployeeMaster | null) => void,
+  onError?: (error: Error) => void,
+) {
+  return onSnapshot(
+    doc(db, "employees", employeeId),
+    (snap) => onChange(snap.exists() ? toMaster(snap.id, snap.data() as Record<string, unknown>) : null),
+    (error) => onError?.(error as Error),
+  );
+}
+
 // Create or update an employee master record. Preserves the auth `uid` and
 // original `createdAt` (merge). Note: this manages the HR record only — a login
 // account (Firebase Auth) is provisioned separately via sign-up / seed.

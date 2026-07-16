@@ -330,6 +330,17 @@ export default function Dashboard() {
           </View>
           <Ionicons name="chevron-forward" size={18} color="#A8A8A8" />
         </Pressable>
+
+        <Pressable style={styles.scheduleLink} onPress={() => router.push("/employee/payslip" as never)}>
+          <View style={styles.scheduleLinkIcon}>
+            <MaterialCommunityIcons name="cash-multiple" size={20} color="#0A0A0A" />
+          </View>
+          <View style={styles.scheduleLinkText}>
+            <Text style={styles.scheduleLinkTitle}>My Payslip</Text>
+            <Text style={styles.scheduleLinkSub}>View your computed pay by month</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#A8A8A8" />
+        </Pressable>
       </ScrollView>
 
       <BottomNav active="home" />
