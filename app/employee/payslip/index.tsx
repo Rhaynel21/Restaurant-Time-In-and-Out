@@ -4,8 +4,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { AmbientTop } from "@/components/ambient-top";
+import { PageHeader } from "@/components/back-button";
 import { BottomNav } from "@/components/bottom-nav";
-import { BrandTitle } from "@/components/brand-title";
 import { useSession } from "@/contexts/session-context";
 import { useResponsiveInset } from "@/hooks/use-responsive";
 import { getAttendanceForMonth } from "@/lib/attendance";
@@ -118,9 +118,7 @@ export default function EmployeePayslip() {
     <View style={styles.screen}>
       <AmbientTop height={300} />
       <ScrollView style={styles.scroll} contentContainerStyle={[styles.content, { paddingHorizontal: inset }]} showsVerticalScrollIndicator={false}>
-        <View style={styles.brandBar}>
-          <BrandTitle size={28} />
-        </View>
+        <PageHeader />
 
         <Text style={styles.title}>My Payslip</Text>
         <Text style={styles.sub}>{master ? master.fullName : employee.fullName}</Text>

@@ -4,8 +4,8 @@ import React, { useEffect } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { AmbientTop } from "@/components/ambient-top";
+import { PageHeader } from "@/components/back-button";
 import { BottomNav } from "@/components/bottom-nav";
-import { BrandTitle } from "@/components/brand-title";
 import { useSession } from "@/contexts/session-context";
 import { useResponsiveInset } from "@/hooks/use-responsive";
 import { AppNotification, markAllRead, subscribeMyNotifications } from "@/lib/notifications";
@@ -45,9 +45,7 @@ export default function EmployeeNotifications() {
     <View style={styles.screen}>
       <AmbientTop height={280} />
       <ScrollView style={styles.scroll} contentContainerStyle={[styles.content, { paddingHorizontal: inset }]} showsVerticalScrollIndicator={false}>
-        <View style={styles.brandBar}>
-          <BrandTitle size={28} />
-        </View>
+        <PageHeader />
         <Text style={styles.title}>Notifications</Text>
         <Text style={styles.sub}>Updates on your requests and leaves</Text>
 

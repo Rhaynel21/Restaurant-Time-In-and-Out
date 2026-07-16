@@ -3,8 +3,8 @@ import React, { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { AmbientTop } from "@/components/ambient-top";
+import { PageHeader } from "@/components/back-button";
 import { BottomNav } from "@/components/bottom-nav";
-import { BrandTitle } from "@/components/brand-title";
 import { useSession } from "@/contexts/session-context";
 import { useResponsiveInset } from "@/hooks/use-responsive";
 import { AttendanceRequest, RequestKind, fileAttendanceRequest, subscribeMyRequests } from "@/lib/attendance-requests";
@@ -71,9 +71,7 @@ export default function EmployeeRequest() {
     <View style={styles.screen}>
       <AmbientTop height={300} />
       <ScrollView style={styles.scroll} contentContainerStyle={[styles.content, { paddingHorizontal: inset }]} showsVerticalScrollIndicator={false}>
-        <View style={styles.brandBar}>
-          <BrandTitle size={28} />
-        </View>
+        <PageHeader />
         <Text style={styles.title}>File a Request</Text>
         <Text style={styles.sub}>Overtime or a DTR correction</Text>
 

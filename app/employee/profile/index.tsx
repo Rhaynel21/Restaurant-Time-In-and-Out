@@ -69,11 +69,18 @@ export default function ProfileScreen() {
           <InfoRow icon="map-marker-outline" label="Branch" value={user.branch} />
         </View>
 
+        <Text style={styles.sectionLabel}>My Records</Text>
+        <View style={styles.menuCard}>
+          <MenuItem icon="cash-multiple" label="My Payslip" onPress={() => router.push("/employee/payslip" as never)} />
+          <View style={styles.divider} />
+          <MenuItem icon="clock-edit-outline" label="File a Request" onPress={() => router.push("/employee/request" as never)} />
+          <View style={styles.divider} />
+          <MenuItem icon="bell-outline" label="Notifications" onPress={() => router.push("/employee/notifications" as never)} />
+        </View>
+
         <Text style={styles.sectionLabel}>Account</Text>
         <View style={styles.menuCard}>
           <MenuItem icon="pencil-outline" label="Edit Profile" onPress={() => {}} />
-          <View style={styles.divider} />
-          <MenuItem icon="bell-outline" label="Notifications" onPress={() => {}} />
           <View style={styles.divider} />
           <MenuItem icon="shield-check-outline" label="Privacy & Security" onPress={() => {}} />
           <View style={styles.divider} />

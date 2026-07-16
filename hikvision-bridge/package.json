@@ -14,7 +14,8 @@
     "seed:docs": "node seed-docs.js",
     "seed:hr": "node seed-hr-extras.js",
     "seed:talent": "node seed-talent.js",
-    "sync:users": "node sync-users.js"
+    "sync:users": "node sync-users.js",
+    "lint": "expo lint"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

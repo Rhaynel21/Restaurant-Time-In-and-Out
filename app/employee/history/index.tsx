@@ -386,12 +386,21 @@ function LegendItem({ color, label }: { color: string; label: string }) {
   );
 }
 
+function hhmm(totalMinutes: number) {
+  return `${String(Math.floor(totalMinutes / 60)).padStart(2, "0")}:${String(totalMinutes % 60).padStart(2, "0")}`;
+}
+
 function AttendanceCard({ record }: { record: AttendanceRecord }) {
   const checkInText = formatTime(record.checkInAt);
   const checkOutText = record.checkOutAt ? formatTime(record.checkOutAt) : "--:--";
-  const totalText =
-    typeof record.totalMinutes === "number"
-      ? `${String(Math.floor(record.totalMinutes / 60)).padStart(2, "0")}:${String(record.totalMinutes % 60).padStart(2, "0")}`
+  const totalText = typeof record.totalMinutes === "number" ? hhmm(record.totalMinutes) : "--:--";
+
+  const hasBreak = !!(record.breakOutAt || record.breakInAt);
+  const breakOutText = record.breakOutAt ? formatTime(record.breakOutAt) : "--:--";
+  const breakInText = record.breakInAt ? formatTime(record.breakInAt) : "--:--";
+  const breakText =
+    record.breakOutAt && record.breakInAt
+      ? hhmm(Math.max(0, Math.round((record.breakInAt.getTime() - record.breakOutAt.getTime()) / 60000)))
       : "--:--";
 
   return (
@@ -420,6 +429,16 @@ function AttendanceCard({ record }: { record: AttendanceRecord }) {
         <View style={styles.verticalDivider} />
         <TimeBlock label="Total" value={totalText} icon="clock-outline" />
       </View>
+
+      {hasBreak && (
+        <View style={[styles.timeRow, styles.breakRow]}>
+          <TimeBlock label="Break Out" value={breakOutText} icon="coffee-outline" />
+          <View style={styles.verticalDivider} />
+          <TimeBlock label="Break In" value={breakInText} icon="coffee" />
+          <View style={styles.verticalDivider} />
+          <TimeBlock label="Break" value={breakText} icon="timer-sand" />
+        </View>
+      )}
     </View>
   );
 }
@@ -815,6 +834,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#F2EFE9",
     borderRadius: 12,
     paddingVertical: 12,
+  },
+  breakRow: {
+    marginTop: 8,
+    backgroundColor: "#F6F0E6",
   },
   timeBlock: {
     flex: 1,

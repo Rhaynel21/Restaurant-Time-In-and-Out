@@ -206,7 +206,21 @@ export default function Dashboard() {
               <Text style={styles.statusLabel}>{statusLabel}</Text>
             </View>
           </View>
-          <View style={styles.avatarWrap}>
+          <View style={styles.headerRight}>
+            <Pressable
+              style={styles.bellBtn}
+              onPress={() => router.push("/employee/notifications" as never)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Notifications"
+            >
+              <Ionicons name="notifications-outline" size={20} color="#0A0A0A" />
+              {notifUnread > 0 && (
+                <View style={styles.bellBadge}>
+                  <Text style={styles.bellBadgeText}>{notifUnread > 9 ? "9+" : notifUnread}</Text>
+                </View>
+              )}
+            </Pressable>
             <View style={styles.avatar}>
               <Text style={styles.avatarText}>{initials}</Text>
             </View>
@@ -337,17 +351,6 @@ export default function Dashboard() {
           <Ionicons name="chevron-forward" size={18} color="#A8A8A8" />
         </Pressable>
 
-        <Pressable style={styles.scheduleLink} onPress={() => router.push("/employee/payslip" as never)}>
-          <View style={styles.scheduleLinkIcon}>
-            <MaterialCommunityIcons name="cash-multiple" size={20} color="#0A0A0A" />
-          </View>
-          <View style={styles.scheduleLinkText}>
-            <Text style={styles.scheduleLinkTitle}>My Payslip</Text>
-            <Text style={styles.scheduleLinkSub}>View your computed pay by month</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color="#A8A8A8" />
-        </Pressable>
-
         <Pressable style={styles.scheduleLink} onPress={() => router.push("/employee/request" as never)}>
           <View style={styles.scheduleLinkIcon}>
             <MaterialCommunityIcons name="clock-edit-outline" size={20} color="#0A0A0A" />
@@ -356,22 +359,6 @@ export default function Dashboard() {
             <Text style={styles.scheduleLinkTitle}>File a Request</Text>
             <Text style={styles.scheduleLinkSub}>Overtime or DTR correction</Text>
           </View>
-          <Ionicons name="chevron-forward" size={18} color="#A8A8A8" />
-        </Pressable>
-
-        <Pressable style={styles.scheduleLink} onPress={() => router.push("/employee/notifications" as never)}>
-          <View style={styles.scheduleLinkIcon}>
-            <MaterialCommunityIcons name="bell-outline" size={20} color="#0A0A0A" />
-          </View>
-          <View style={styles.scheduleLinkText}>
-            <Text style={styles.scheduleLinkTitle}>Notifications</Text>
-            <Text style={styles.scheduleLinkSub}>{notifUnread > 0 ? `${notifUnread} unread` : "You're all caught up"}</Text>
-          </View>
-          {notifUnread > 0 && (
-            <View style={styles.notifBadge}>
-              <Text style={styles.notifBadgeText}>{notifUnread}</Text>
-            </View>
-          )}
           <Ionicons name="chevron-forward" size={18} color="#A8A8A8" />
         </Pressable>
       </ScrollView>
@@ -459,10 +446,41 @@ const styles = StyleSheet.create({
     color: "#8A8A8A",
     fontWeight: "500",
   },
-  avatarWrap: {
-    width: 54,
-    height: 54,
+  headerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
   },
+  bellBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#ffffff",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(10, 10, 10, 0.05)",
+    shadowColor: "#141414",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  bellBadge: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    paddingHorizontal: 4,
+    backgroundColor: "#B23A3A",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: "#ffffff",
+  },
+  bellBadgeText: { color: "#fff", fontSize: 9, fontWeight: "800" },
   avatar: {
     width: 54,
     height: 54,
