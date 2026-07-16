@@ -1,4 +1,4 @@
-import { Dtr } from "@/lib/dtr";
+import { Dtr, sliceDtr } from "@/lib/dtr";
 
 // Philippine statutory payroll engine — DOLE pay rules + BIR/SSS/PhilHealth/
 // Pag-IBIG deductions — turning a month's DTR into a full payslip (gross → net).
@@ -12,12 +12,18 @@ export const PH_RATES_VERSION = "2025";
 
 // DOLE pay formula — the configurable premium knobs. Defaults follow the Labor
 // Code minimums; a company may pay more, editable via Payroll Settings.
+export type PayFrequency = "monthly" | "semimonthly" | "weekly";
+
 export type PayFormula = {
   hoursPerDay: number; // hours in a paid day (derives the hourly rate)
   otPremium: number; // overtime premium fraction (0.25 → 125%)
   nightDiff: number; // night differential fraction (0.10 → +10%)
   regHolidayPremium: number; // regular holiday premium fraction (1.0 → 200% worked)
   specialHolidayPremium: number; // special day premium fraction (0.30 → 130% worked)
+  // ── Pay period (all customizable per company) ──
+  payFrequency: PayFrequency; // monthly · semi-monthly · weekly
+  cutoffDay: number; // semi-monthly split day (1–28); 1st period = 1..cutoff
+  contributionOn: "second" | "split"; // semi-monthly: deduct SSS/PhilHealth/etc on 2nd cutoff only, or split 50/50
 };
 
 export const DEFAULT_FORMULA: PayFormula = {
@@ -26,7 +32,51 @@ export const DEFAULT_FORMULA: PayFormula = {
   nightDiff: 0.1,
   regHolidayPremium: 1.0,
   specialHolidayPremium: 0.3,
+  payFrequency: "monthly",
+  cutoffDay: 15,
+  contributionOn: "second",
 };
+
+// One pay period within a month, and how much of the monthly statutory
+// deductions / allowances it carries.
+export type PayPeriod = {
+  key: string;
+  label: string;
+  fromDay: number;
+  toDay: number;
+  deductionFactor: number; // share of monthly SSS/PhilHealth/Pag-IBIG/tax/loans
+  allowanceFactor: number; // share of monthly allowances
+};
+
+// Build the pay periods for a month from the configured frequency. Earnings are
+// always the actual days worked in each period; the factors spread the monthly
+// deductions/allowances across periods.
+export function payPeriods(formula: PayFormula, year: number, month: number): PayPeriod[] {
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  if (formula.payFrequency === "semimonthly") {
+    const c = Math.min(28, Math.max(1, Math.round(formula.cutoffDay)));
+    const second = formula.contributionOn === "split" ? 0.5 : 1;
+    const first = formula.contributionOn === "split" ? 0.5 : 0;
+    return [
+      { key: "c1", label: `1st cutoff · ${c === 1 ? "1" : `1–${c}`}`, fromDay: 1, toDay: c, deductionFactor: first, allowanceFactor: 0.5 },
+      { key: "c2", label: `2nd cutoff · ${c + 1}–${lastDay}`, fromDay: c + 1, toDay: lastDay, deductionFactor: second, allowanceFactor: 0.5 },
+    ];
+  }
+  if (formula.payFrequency === "weekly") {
+    const chunks: [number, number][] = [];
+    for (let s = 1; s <= lastDay; s += 7) chunks.push([s, Math.min(s + 6, lastDay)]);
+    const n = chunks.length;
+    return chunks.map(([f, t], i) => ({
+      key: `w${i}`,
+      label: `Week ${i + 1} · ${f}–${t}`,
+      fromDay: f,
+      toDay: t,
+      deductionFactor: 1 / n,
+      allowanceFactor: 1 / n,
+    }));
+  }
+  return [{ key: "full", label: "Whole month", fromDay: 1, toDay: lastDay, deductionFactor: 1, allowanceFactor: 1 }];
+}
 
 function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
@@ -228,6 +278,77 @@ export function computePayslip(
     pagibigER: pagibig.er,
     employerContributions,
     thirteenthMonthAccrual: round2(basicPay / 12),
+  };
+}
+
+// Compute a payslip for one pay PERIOD (semi-monthly / weekly). Earnings are the
+// period's actual worked days; statutory deductions, tax, and allowances are the
+// monthly figures scaled by the period's factors.
+export function computePeriodPayslip(
+  monthlyDtr: Dtr,
+  pay: PayBasis,
+  inputs: PayInputs,
+  formula: PayFormula,
+  period: PayPeriod,
+): Payslip {
+  // Whole month for the monthly-basis deductions; the slice for period earnings.
+  const monthly = computePayslip(monthlyDtr, pay, inputs, formula);
+  if (period.fromDay <= 1 && period.deductionFactor === 1 && period.allowanceFactor === 1) {
+    return monthly; // whole-month period
+  }
+  const earn = computePayslip(sliceDtr(monthlyDtr, period.fromDay, period.toDay), pay, {}, formula);
+  const df = period.deductionFactor;
+  const af = period.allowanceFactor;
+
+  const allowanceTaxable = round2(monthly.allowanceTaxable * af);
+  const deMinimis = round2(monthly.deMinimis * af);
+  const grossPay = round2(
+    earn.basicPay + earn.otPay + earn.nightPay + earn.regHolidayPay + earn.specialHolidayPay + allowanceTaxable + deMinimis,
+  );
+
+  const sssEE = round2(monthly.sssEE * df);
+  const philhealthEE = round2(monthly.philhealthEE * df);
+  const pagibigEE = round2(monthly.pagibigEE * df);
+  const totalContributions = round2(sssEE + philhealthEE + pagibigEE);
+  const withholdingTax = round2(monthly.withholdingTax * df);
+  const otherDeductions = monthly.otherDeductions
+    .map((d) => ({ label: d.label, amount: round2(d.amount * df) }))
+    .filter((d) => d.amount > 0);
+  const totalOtherDeductions = round2(otherDeductions.reduce((s, d) => s + d.amount, 0));
+  const totalDeductions = round2(totalContributions + withholdingTax + totalOtherDeductions);
+
+  return {
+    daysPresent: earn.daysPresent,
+    payType: earn.payType,
+    hourlyRate: earn.hourlyRate,
+    dailyRate: earn.dailyRate,
+    regularHours: earn.regularHours,
+    basicPay: earn.basicPay,
+    otHours: earn.otHours,
+    otPay: earn.otPay,
+    nightHours: earn.nightHours,
+    nightPay: earn.nightPay,
+    regHolidayPay: earn.regHolidayPay,
+    specialHolidayPay: earn.specialHolidayPay,
+    allowanceTaxable,
+    deMinimis,
+    grossPay,
+    sssEE,
+    philhealthEE,
+    pagibigEE,
+    totalContributions,
+    taxableIncome: round2(monthly.taxableIncome * df),
+    withholdingTax,
+    otherDeductions,
+    totalOtherDeductions,
+    totalDeductions,
+    netPay: round2(grossPay - totalDeductions),
+    sssER: round2(monthly.sssER * df),
+    sssEC: round2(monthly.sssEC * df),
+    philhealthER: round2(monthly.philhealthER * df),
+    pagibigER: round2(monthly.pagibigER * df),
+    employerContributions: round2(monthly.employerContributions * df),
+    thirteenthMonthAccrual: round2(earn.basicPay / 12),
   };
 }
 

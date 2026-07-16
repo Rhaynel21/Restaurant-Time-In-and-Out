@@ -10,12 +10,17 @@ import { DEFAULT_FORMULA, PayFormula } from "@/lib/ph-payroll";
 function coerce(data: unknown): PayFormula {
   const d = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
   const num = (v: unknown, fallback: number) => (typeof v === "number" && Number.isFinite(v) ? v : fallback);
+  const freq =
+    d.payFrequency === "semimonthly" || d.payFrequency === "weekly" ? d.payFrequency : DEFAULT_FORMULA.payFrequency;
   return {
     hoursPerDay: num(d.hoursPerDay, DEFAULT_FORMULA.hoursPerDay),
     otPremium: num(d.otPremium, DEFAULT_FORMULA.otPremium),
     nightDiff: num(d.nightDiff, DEFAULT_FORMULA.nightDiff),
     regHolidayPremium: num(d.regHolidayPremium, DEFAULT_FORMULA.regHolidayPremium),
     specialHolidayPremium: num(d.specialHolidayPremium, DEFAULT_FORMULA.specialHolidayPremium),
+    payFrequency: freq,
+    cutoffDay: Math.min(28, Math.max(1, Math.round(num(d.cutoffDay, DEFAULT_FORMULA.cutoffDay)))),
+    contributionOn: d.contributionOn === "split" ? "split" : "second",
   };
 }
 

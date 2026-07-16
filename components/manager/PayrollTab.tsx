@@ -9,7 +9,7 @@ import { buildDtr } from "@/lib/dtr";
 import { EmployeeMaster, subscribeEmployeeMasters } from "@/lib/hr";
 import { inScope } from "@/lib/org";
 import { savePayrollFormula, subscribePayrollFormula } from "@/lib/payroll-settings";
-import { DEFAULT_FORMULA, PH_RATES_VERSION, PayBasis, PayFormula, PayInputs, Payslip as PayslipData, computePayslip, peso } from "@/lib/ph-payroll";
+import { DEFAULT_FORMULA, PH_RATES_VERSION, PayBasis, PayFormula, PayInputs, Payslip as PayslipData, computePeriodPayslip, payPeriods, peso } from "@/lib/ph-payroll";
 import { getSchedule } from "@/lib/schedules";
 
 type PayRow = {
@@ -42,6 +42,7 @@ export function PayrollTab({ allowed, companyId }: { allowed: Set<string> | null
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
+  const [periodKey, setPeriodKey] = useState<string>("");
   const [showFormulas, setShowFormulas] = useState(false);
   const [formula, setFormula] = useState<PayFormula>(DEFAULT_FORMULA);
   const [draft, setDraft] = useState<PayFormula>(DEFAULT_FORMULA);
@@ -57,6 +58,9 @@ export function PayrollTab({ allowed, companyId }: { allowed: Set<string> | null
   const [yy, mm] = month.split("-");
   const thisYear = new Date().getFullYear();
   const yearOptions = Array.from({ length: 5 }, (_, i) => String(thisYear - 3 + i)).map((y) => ({ value: y, label: y }));
+  const periods = useMemo(() => payPeriods(formula, Number(yy), Number(mm) - 1), [formula, yy, mm]);
+  const period = periods.find((p) => p.key === periodKey) ?? periods[0];
+  const periodOptions = periods.map((p) => ({ value: p.key, label: p.label }));
 
   const compute = async () => {
     setError("");
@@ -95,7 +99,7 @@ export function PayrollTab({ allowed, companyId }: { allowed: Set<string> | null
               { label: "Cash Advance", amount: e.cashAdvance },
             ],
           };
-          const slip = computePayslip(dtr, pay, inputs, formula);
+          const slip = computePeriodPayslip(dtr, pay, inputs, formula, period);
           return {
             id: e.employeeId,
             name: e.fullName,
@@ -111,7 +115,8 @@ export function PayrollTab({ allowed, companyId }: { allowed: Set<string> | null
       );
       result.sort((a, b) => a.branch.localeCompare(b.branch) || a.name.localeCompare(b.name));
       setRows(result);
-      setLabel(new Date(y, mo - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" }));
+      const monthLabel = new Date(y, mo - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+      setLabel(period.key === "full" ? monthLabel : `${monthLabel} · ${period.label}`);
     } catch (e) {
       setError("Failed to compute: " + (e instanceof Error ? e.message : "unknown error"));
     } finally {
@@ -229,6 +234,12 @@ export function PayrollTab({ allowed, companyId }: { allowed: Set<string> | null
             <Text style={styles.label}>Year</Text>
             <Select value={yy} width={110} options={yearOptions} onChange={(v) => setMonth(`${v}-${mm}`)} />
           </View>
+          {periods.length > 1 && (
+            <View>
+              <Text style={styles.label}>Period</Text>
+              <Select value={period.key} width={200} options={periodOptions} onChange={setPeriodKey} />
+            </View>
+          )}
           <Pressable style={styles.genBtn} disabled={loading} onPress={compute}>
             <Text style={styles.genText}>{loading ? "Computing…" : "Compute Payroll"}</Text>
           </Pressable>
@@ -278,6 +289,40 @@ export function PayrollTab({ allowed, companyId }: { allowed: Set<string> | null
             <FormulaField label="Regular holiday premium" value={pct(draft.regHolidayPremium)} suffix="%" hint={`= pay ${100 + pct(draft.regHolidayPremium)}% worked`} onChange={(n) => setDraft({ ...draft, regHolidayPremium: n / 100 })} />
             <FormulaField label="Special holiday premium" value={pct(draft.specialHolidayPremium)} suffix="%" hint={`= pay ${100 + pct(draft.specialHolidayPremium)}% worked`} onChange={(n) => setDraft({ ...draft, specialHolidayPremium: n / 100 })} />
           </View>
+
+          <Text style={[styles.formulaHead, { marginTop: 18 }]}>Pay schedule</Text>
+          <View style={styles.segRow}>
+            {(["monthly", "semimonthly", "weekly"] as const).map((f) => (
+              <Pressable key={f} style={[styles.seg, draft.payFrequency === f && styles.segOn]} onPress={() => setDraft({ ...draft, payFrequency: f })}>
+                <Text style={[styles.segText, draft.payFrequency === f && styles.segTextOn]}>
+                  {f === "semimonthly" ? "Semi-monthly" : f === "weekly" ? "Weekly" : "Monthly"}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          {draft.payFrequency === "semimonthly" && (
+            <View style={[styles.formulaGrid, { marginTop: 12 }]}>
+              <FormulaField label="Cutoff day (1st period ends)" value={draft.cutoffDay} suffix="day" onChange={(n) => setDraft({ ...draft, cutoffDay: Math.min(28, Math.max(1, Math.round(n))) })} />
+              <View style={styles.ff}>
+                <Text style={styles.ffLabel}>Deduct SSS / PhilHealth / etc. on</Text>
+                <View style={styles.segRow}>
+                  {(["second", "split"] as const).map((c) => (
+                    <Pressable key={c} style={[styles.seg, draft.contributionOn === c && styles.segOn]} onPress={() => setDraft({ ...draft, contributionOn: c })}>
+                      <Text style={[styles.segText, draft.contributionOn === c && styles.segTextOn]}>{c === "second" ? "2nd cutoff" : "Split 50/50"}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            </View>
+          )}
+          <Text style={styles.formulaNote}>
+            {draft.payFrequency === "weekly"
+              ? "Weekly — each week pays that week's worked days; monthly contributions are spread evenly across the month's weeks."
+              : draft.payFrequency === "semimonthly"
+                ? "Semi-monthly — two cutoffs per month. Earnings follow days worked; deductions apply per the setting above."
+                : "Monthly — one payroll run per month."}
+          </Text>
+
           <View style={styles.formulaActions}>
             {formulaMsg ? <Text style={styles.formulaMsg}>{formulaMsg}</Text> : <View style={{ flex: 1 }} />}
             <Pressable style={styles.resetBtn} onPress={() => setDraft(DEFAULT_FORMULA)}>
@@ -491,6 +536,11 @@ const styles = StyleSheet.create({
   formulaRefRow: { paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: Colors.hairline },
   formulaRefLabel: { fontSize: 13, fontWeight: "700", color: Colors.textPrimary },
   formulaRefText: { fontSize: 12.5, color: Colors.textMuted, marginTop: 2 },
+  segRow: { flexDirection: "row", gap: 6, flexWrap: "wrap" },
+  seg: { paddingHorizontal: 14, height: 38, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: Colors.warmSurface, borderWidth: 1, borderColor: Colors.warmBorder },
+  segOn: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  segText: { fontSize: 13, fontWeight: "700", color: Colors.textMuted },
+  segTextOn: { color: "#fff" },
   label: { fontSize: 12, fontWeight: "700", color: Colors.textBody, marginBottom: 8 },
   controls: { flexDirection: "row", alignItems: "flex-end", gap: 12, flexWrap: "wrap" },
   monthInput: { width: 160, height: 46, borderRadius: 12, borderWidth: 1, borderColor: Colors.warmBorder, backgroundColor: Colors.warmSurface, paddingHorizontal: 12, fontSize: 15, color: Colors.textPrimary } as object,

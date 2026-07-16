@@ -225,6 +225,28 @@ export function buildDtr(
   return { rows, summary };
 }
 
+// Slice a month's DTR to a day range [fromDay, toDay] (inclusive) and recompute
+// its summary — used for semi-monthly / weekly pay periods.
+export function sliceDtr(dtr: Dtr, fromDay: number, toDay: number): Dtr {
+  const rows = dtr.rows.filter((r) => r.day >= fromDay && r.day <= toDay);
+  const summary: DtrSummary = {
+    totalMinutes: 0, breakMinutes: 0, otMinutes: 0, underMinutes: 0, nightMinutes: 0,
+    present: 0, late: 0, absent: 0, restDays: 0,
+  };
+  for (const r of rows) {
+    summary.totalMinutes += r.workedMinutes;
+    summary.breakMinutes += r.breakMinutes;
+    summary.otMinutes += r.otMinutes;
+    summary.underMinutes += r.underMinutes;
+    summary.nightMinutes += r.nightMinutes;
+    if (r.status === "present") summary.present += 1;
+    if (r.late) summary.late += 1;
+    if (r.status === "absent") summary.absent += 1;
+    if (r.status === "rest") summary.restDays += 1;
+  }
+  return { rows, summary };
+}
+
 export function formatHours(minutes: number): string {
   return (minutes / 60).toFixed(2);
 }
