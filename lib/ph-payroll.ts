@@ -82,7 +82,10 @@ export type PayBasis = { type: "daily" | "hourly"; dailyRate: number; hourlyRate
 export type Payslip = {
   // Earnings
   daysPresent: number;
+  payType: "daily" | "hourly";
   hourlyRate: number;
+  dailyRate: number;
+  regularHours: number;
   basicPay: number;
   otHours: number;
   otPay: number;
@@ -125,12 +128,12 @@ export function computePayslip(dtr: Dtr, pay: PayBasis, inputs: PayInputs = {}):
 
   // Daily-paid: rate × days present. Hourly-paid: rate × regular hours (worked
   // hours net of overtime, which is paid separately at a premium below).
+  const regularHours = round2(Math.max(0, summary.totalMinutes - summary.otMinutes) / 60);
   const basicPay =
-    pay.type === "hourly"
-      ? round2((Math.max(0, summary.totalMinutes - summary.otMinutes) / 60) * hourlyRate)
-      : round2(dailyRate * summary.present);
+    pay.type === "hourly" ? round2(regularHours * hourlyRate) : round2(dailyRate * summary.present);
   const otHours = round2(summary.otMinutes / 60);
-  const otPay = round2(otHours * hourlyRate * (1 + OT_PREMIUM) - otHours * hourlyRate);
+  // Overtime hours are beyond basic pay, so they're paid at the full 125%.
+  const otPay = round2(otHours * hourlyRate * (1 + OT_PREMIUM));
   const nightHours = round2(summary.nightMinutes / 60);
   const nightPay = round2(nightHours * hourlyRate * NIGHT_DIFF);
 
@@ -181,7 +184,10 @@ export function computePayslip(dtr: Dtr, pay: PayBasis, inputs: PayInputs = {}):
 
   return {
     daysPresent: summary.present,
+    payType: pay.type,
     hourlyRate,
+    dailyRate,
+    regularHours,
     basicPay,
     otHours,
     otPay,

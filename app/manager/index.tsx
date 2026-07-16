@@ -48,8 +48,10 @@ const TABS: { key: TabKey; label: string; icon: MdIcon; title: string; subtitle:
 const NAV_GROUPS: { label: string; keys: TabKey[] }[] = [
   { label: "", keys: ["dashboard"] },
   { label: "Time & Attendance", keys: ["attendance", "dtr", "schedules"] },
-  { label: "People", keys: ["employees", "memo", "org", "payroll", "finalpay", "documents"] },
+  { label: "Payroll & Compensation", keys: ["payroll", "finalpay"] },
+  { label: "People", keys: ["employees", "org", "documents"] },
   { label: "Leave", keys: ["approvals", "leaves"] },
+  { label: "Communication", keys: ["memo"] },
   { label: "System", keys: ["devices"] },
 ];
 
@@ -61,6 +63,9 @@ export default function ManagerPortal() {
   const [pendingCount, setPendingCount] = useState(0);
   const [alarmCount, setAlarmCount] = useState(0);
   const [org, setOrg] = useState<OrgTree>({ companies: [], brands: [], branches: [] });
+  const [brandFilter, setBrandFilter] = useState<string | null>(null);
+  const [branchFilter, setBranchFilter] = useState<string | null>(null);
+  const [openSel, setOpenSel] = useState<null | "brand" | "branch">(null);
 
   useEffect(() => subscribePendingLeaves((l) => setPendingCount(l.length), () => setPendingCount(0)), []);
   useEffect(
@@ -77,8 +82,27 @@ export default function ManagerPortal() {
   // Org scope: what this user may see (owner → all, admin → their company's
   // branches, manager → their branch). `allowed` is a branch-id set or null (all).
   const scope = resolveScope(employee);
-  const allowed = allowedBranchIds(scope, org.branches);
+  const baseAllowed = allowedBranchIds(scope, org.branches);
   const canManageOrg = employee.accessRole === "owner" || employee.accessRole === "admin";
+
+  // Multi-tenant context picker: within what this user's role allows, let them
+  // narrow the whole portal to one brand and/or one branch.
+  const visibleBranches = org.branches.filter((b) => baseAllowed === null || baseAllowed.has(b.id));
+  const visibleBrands = org.brands.filter((br) => visibleBranches.some((b) => b.brandId === br.id));
+  const branchOptions = brandFilter ? visibleBranches.filter((b) => b.brandId === brandFilter) : visibleBranches;
+  let scopedBranches = visibleBranches;
+  if (brandFilter) scopedBranches = scopedBranches.filter((b) => b.brandId === brandFilter);
+  if (branchFilter) scopedBranches = scopedBranches.filter((b) => b.id === branchFilter);
+  const allowed = baseAllowed === null && !brandFilter && !branchFilter ? null : new Set(scopedBranches.map((b) => b.id));
+
+  const companyName = scope.companyId
+    ? org.companies.find((c) => c.id === scope.companyId)?.name ?? "Organization"
+    : org.companies.length === 1
+      ? org.companies[0].name
+      : "All Organizations";
+  const companyInitial = (companyName.trim()[0] ?? "•").toUpperCase();
+  const brandLabel = brandFilter ? visibleBrands.find((b) => b.id === brandFilter)?.name ?? "Brand" : "All Brands";
+  const branchLabel = branchFilter ? branchOptions.find((b) => b.id === branchFilter)?.name ?? "Branch" : "All Branches";
 
   const initials = employee.fullName
     .split(" ")
@@ -135,7 +159,7 @@ export default function ManagerPortal() {
         <MaterialCommunityIcons
           name={t.icon}
           size={19}
-          color={isActive ? Colors.primary : "rgba(247,245,240,0.7)"}
+          color={isActive ? Colors.primary : "rgba(247,245,240,0.82)"}
         />
         <Text style={[styles.navText, isActive && styles.navTextActive]}>{t.label}</Text>
         {count > 0 && (
@@ -183,8 +207,53 @@ export default function ManagerPortal() {
               style={styles.brandLogo}
               resizeMode="contain"
             />
-            <Text style={styles.brandSub}>Manager Portal</Text>
           </View>
+
+          <View style={styles.orgBlock}>
+            <View style={styles.orgHead}>
+              <View style={styles.orgAvatar}>
+                <Text style={styles.orgAvatarText}>{companyInitial}</Text>
+              </View>
+              <View style={styles.grow}>
+                <Text style={styles.orgName} numberOfLines={2}>{companyName}</Text>
+                <View style={styles.roleBadge}>
+                  <Text style={styles.roleBadgeText}>{employee.accessRole}</Text>
+                </View>
+              </View>
+            </View>
+
+            {visibleBrands.length > 0 && (
+              <>
+                <Text style={styles.selLabel}>Brand</Text>
+                <SidebarSelect
+                  label={brandLabel}
+                  open={openSel === "brand"}
+                  onToggle={() => setOpenSel(openSel === "brand" ? null : "brand")}
+                  selected={brandFilter}
+                  options={[{ id: null, name: "All Brands" }, ...visibleBrands.map((b) => ({ id: b.id, name: b.name }))]}
+                  onSelect={(id) => {
+                    setBrandFilter(id);
+                    setBranchFilter(null);
+                    setOpenSel(null);
+                  }}
+                />
+              </>
+            )}
+
+            <Text style={styles.selLabel}>Branch</Text>
+            <SidebarSelect
+              label={branchLabel}
+              open={openSel === "branch"}
+              onToggle={() => setOpenSel(openSel === "branch" ? null : "branch")}
+              selected={branchFilter}
+              options={[{ id: null, name: "All Branches" }, ...branchOptions.map((b) => ({ id: b.id, name: b.name }))]}
+              onSelect={(id) => {
+                setBranchFilter(id);
+                setOpenSel(null);
+              }}
+            />
+          </View>
+
           <ScrollView style={styles.nav} contentContainerStyle={styles.navContent} showsVerticalScrollIndicator={false}>
             {NAV_GROUPS.map((g, gi) => (
               <View key={gi} style={gi > 0 ? styles.navGroup : undefined}>
@@ -197,12 +266,17 @@ export default function ManagerPortal() {
         </LinearGradient>
         <View style={styles.main}>
           <View style={styles.topbar}>
-            <Text style={styles.topTitle}>{active.title}</Text>
-            <Text style={styles.topSub}>{active.subtitle}</Text>
+            <View style={styles.topIcon}>
+              <MaterialCommunityIcons name={active.icon} size={22} color={Colors.primary} />
+            </View>
+            <View style={styles.grow}>
+              <Text style={styles.topTitle}>{active.title}</Text>
+              <Text style={styles.topSub}>{active.subtitle}</Text>
+            </View>
           </View>
           <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
             {content}
-            <Text style={styles.footer}>Qui · Manager Portal · real-time via Firestore</Text>
+            <Text style={styles.footer}>Qui · real-time via Firestore</Text>
           </ScrollView>
         </View>
       </View>
@@ -219,7 +293,6 @@ export default function ManagerPortal() {
             style={styles.mobileLogo}
             resizeMode="contain"
           />
-          <Text style={styles.mobileSub}>Manager Portal</Text>
         </View>
         <Pressable style={styles.logout} onPress={logout}>
           <Text style={styles.logoutText}>Log out</Text>
@@ -236,13 +309,67 @@ export default function ManagerPortal() {
           <Text style={styles.topSub}>{active.subtitle}</Text>
         </View>
         {content}
-        <Text style={styles.footer}>Qui · Manager Portal · real-time via Firestore</Text>
+        <Text style={styles.footer}>Qui · real-time via Firestore</Text>
       </ScrollView>
     </View>
   );
 }
 
+// Compact sidebar dropdown for the brand / branch context pickers.
+function SidebarSelect({
+  label,
+  open,
+  onToggle,
+  options,
+  selected,
+  onSelect,
+}: {
+  label: string;
+  open: boolean;
+  onToggle: () => void;
+  options: { id: string | null; name: string }[];
+  selected: string | null;
+  onSelect: (id: string | null) => void;
+}) {
+  return (
+    <View style={styles.selWrap}>
+      <Pressable style={styles.selBtn} onPress={onToggle}>
+        <Text style={styles.selValue} numberOfLines={1}>{label}</Text>
+        <MaterialCommunityIcons name={open ? "chevron-up" : "chevron-down"} size={18} color="rgba(247,245,240,0.7)" />
+      </Pressable>
+      {open && (
+        <View style={styles.selMenu}>
+          {options.map((o) => (
+            <Pressable key={o.id ?? "all"} style={styles.selItem} onPress={() => onSelect(o.id)}>
+              <Text style={[styles.selItemText, o.id === selected && styles.selItemTextOn]} numberOfLines={1}>
+                {o.name}
+              </Text>
+              {o.id === selected && <MaterialCommunityIcons name="check" size={15} color={Colors.textOnDark} />}
+            </Pressable>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  orgBlock: { paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "rgba(247,245,240,0.1)", zIndex: 20 },
+  orgHead: { flexDirection: "row", alignItems: "center", gap: 11, marginBottom: 10 },
+  orgAvatar: { width: 40, height: 40, borderRadius: 11, backgroundColor: "rgba(247,245,240,0.16)", alignItems: "center", justifyContent: "center" },
+  orgAvatarText: { color: Colors.textOnDark, fontWeight: "800", fontSize: 16 },
+  orgName: { color: Colors.textOnDark, fontWeight: "800", fontSize: 14, letterSpacing: -0.2 },
+  roleBadge: { alignSelf: "flex-start", marginTop: 4, backgroundColor: "rgba(247,245,240,0.16)", borderRadius: 999, paddingHorizontal: 9, paddingVertical: 2 },
+  roleBadgeText: { color: Colors.textOnDark, fontSize: 10, fontWeight: "700", textTransform: "capitalize", letterSpacing: 0.3 },
+  selLabel: { color: "rgba(247,245,240,0.5)", fontSize: 10, fontWeight: "800", letterSpacing: 1, textTransform: "uppercase", marginTop: 8, marginBottom: 5, marginLeft: 2 },
+  selWrap: { position: "relative" },
+  selBtn: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, backgroundColor: "rgba(247,245,240,0.1)", borderWidth: 1, borderColor: "rgba(247,245,240,0.18)", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 },
+  selValue: { color: Colors.textOnDark, fontWeight: "700", fontSize: 13, flex: 1 },
+  selMenu: { marginTop: 4, backgroundColor: "rgba(20,26,14,0.55)", borderRadius: 10, borderWidth: 1, borderColor: "rgba(247,245,240,0.16)", paddingVertical: 4 },
+  selItem: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, paddingHorizontal: 12, paddingVertical: 9 },
+  selItemText: { color: "rgba(247,245,240,0.82)", fontSize: 13, fontWeight: "600", flex: 1 },
+  selItemTextOn: { color: Colors.textOnDark, fontWeight: "800" },
+
   screen: { flex: 1, backgroundColor: Colors.background },
   screenRow: { flex: 1, flexDirection: "row", backgroundColor: Colors.background },
 
@@ -276,11 +403,11 @@ const styles = StyleSheet.create({
   navGroup: { marginTop: 16, gap: 2 },
   navGroupLabel: {
     fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 1.5,
+    fontWeight: "800",
+    letterSpacing: 1.4,
     textTransform: "uppercase",
-    color: "rgba(247,245,240,0.38)",
-    marginBottom: 6,
+    color: "rgba(247,245,240,0.55)",
+    marginBottom: 7,
     marginLeft: 14,
   },
   navBtn: {
@@ -292,7 +419,7 @@ const styles = StyleSheet.create({
     borderRadius: 11,
   },
   navBtnActive: { backgroundColor: Colors.textOnDark },
-  navText: { fontSize: 14, fontWeight: "600", color: "rgba(247,245,240,0.68)" },
+  navText: { fontSize: 14, fontWeight: "600", color: "rgba(247,245,240,0.85)" },
   navTextActive: { color: Colors.primary },
   count: {
     marginLeft: "auto",
@@ -345,10 +472,22 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.hairline,
     paddingHorizontal: 36,
-    paddingVertical: 22,
+    paddingVertical: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
   },
-  topTitle: { fontSize: 21, fontWeight: "700", color: Colors.textPrimary, letterSpacing: -0.2 },
-  topSub: { marginTop: 4, fontSize: 13, color: Colors.textSubtle },
+  topIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 13,
+    backgroundColor: Colors.primaryTint,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  crumb: { fontSize: 10, fontWeight: "800", color: Colors.accent, textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 },
+  topTitle: { fontSize: 22, fontWeight: "800", color: Colors.textPrimary, letterSpacing: -0.4 },
+  topSub: { marginTop: 3, fontSize: 13, color: Colors.textSubtle },
   container: { maxWidth: 1040, width: "100%", paddingHorizontal: 36, paddingTop: 28, paddingBottom: 60 },
   footer: { textAlign: "center", color: Colors.textFaint, fontSize: 12, marginTop: 30 },
 

@@ -291,24 +291,28 @@ function Payslip({ slip }: { slip: PayslipData }) {
       <View style={styles.payslipCols}>
         <View style={styles.payslipCol}>
           <Text style={styles.payslipHead}>Earnings</Text>
-          <LineItem label={`Basic (${slip.daysPresent} days)`} value={peso(slip.basicPay)} />
-          {slip.otPay > 0 && <LineItem label={`Overtime (${slip.otHours} h)`} value={peso(slip.otPay)} />}
-          {slip.nightPay > 0 && <LineItem label={`Night differential (${slip.nightHours} h)`} value={peso(slip.nightPay)} />}
-          {slip.regHolidayPay > 0 && <LineItem label="Regular holiday" value={peso(slip.regHolidayPay)} />}
-          {slip.specialHolidayPay > 0 && <LineItem label="Special holiday" value={peso(slip.specialHolidayPay)} />}
-          {slip.allowanceTaxable > 0 && <LineItem label="Taxable allowance" value={peso(slip.allowanceTaxable)} />}
-          {slip.deMinimis > 0 && <LineItem label="De-minimis (non-taxable)" value={peso(slip.deMinimis)} />}
+          <LineItem
+            label="Basic pay"
+            detail={slip.payType === "hourly" ? `${slip.regularHours} h × ${peso(slip.hourlyRate)}/hr` : `${slip.daysPresent} days × ${peso(slip.dailyRate)}/day`}
+            value={peso(slip.basicPay)}
+          />
+          {slip.otPay > 0 && <LineItem label="Overtime" detail={`${slip.otHours} h × ${peso(slip.hourlyRate)} × 125%`} value={peso(slip.otPay)} />}
+          {slip.nightPay > 0 && <LineItem label="Night differential" detail={`${slip.nightHours} h × ${peso(slip.hourlyRate)} × 10%`} value={peso(slip.nightPay)} />}
+          {slip.regHolidayPay > 0 && <LineItem label="Regular holiday" detail="+100% of daily rate" value={peso(slip.regHolidayPay)} />}
+          {slip.specialHolidayPay > 0 && <LineItem label="Special holiday" detail="+30% of daily rate" value={peso(slip.specialHolidayPay)} />}
+          {slip.allowanceTaxable > 0 && <LineItem label="Taxable allowance" detail="monthly, taxable" value={peso(slip.allowanceTaxable)} />}
+          {slip.deMinimis > 0 && <LineItem label="De-minimis" detail="monthly, non-taxable" value={peso(slip.deMinimis)} />}
           <LineItem label="Gross Pay" value={peso(slip.grossPay)} strong />
         </View>
 
         <View style={styles.payslipCol}>
           <Text style={styles.payslipHead}>Deductions</Text>
-          <LineItem label="SSS" value={peso(slip.sssEE)} />
-          <LineItem label="PhilHealth" value={peso(slip.philhealthEE)} />
-          <LineItem label="Pag-IBIG" value={peso(slip.pagibigEE)} />
-          <LineItem label="Withholding tax" value={peso(slip.withholdingTax)} />
+          <LineItem label="SSS" detail="5% employee share of MSC" value={peso(slip.sssEE)} />
+          <LineItem label="PhilHealth" detail="2.5% of basic (₱10k–₱100k)" value={peso(slip.philhealthEE)} />
+          <LineItem label="Pag-IBIG" detail="2% (max ₱200)" value={peso(slip.pagibigEE)} />
+          <LineItem label="Withholding tax" detail={`TRAIN table on ${peso(slip.taxableIncome)}`} value={peso(slip.withholdingTax)} />
           {slip.otherDeductions.map((d) => (
-            <LineItem key={d.label} label={d.label} value={peso(d.amount)} />
+            <LineItem key={d.label} label={d.label} detail="recurring deduction" value={peso(d.amount)} />
           ))}
           <LineItem label="Total Deductions" value={peso(slip.totalDeductions)} strong />
         </View>
@@ -332,10 +336,13 @@ function Payslip({ slip }: { slip: PayslipData }) {
   );
 }
 
-function LineItem({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+function LineItem({ label, value, detail, strong }: { label: string; value: string; detail?: string; strong?: boolean }) {
   return (
     <View style={[styles.lineItem, strong && styles.lineItemStrong]}>
-      <Text style={[styles.lineLabel, strong && styles.lineLabelStrong]}>{label}</Text>
+      <View style={styles.lineLabelWrap}>
+        <Text style={[styles.lineLabel, strong && styles.lineLabelStrong]}>{label}</Text>
+        {detail ? <Text style={styles.lineDetail}>{detail}</Text> : null}
+      </View>
       <Text style={[styles.lineValue, strong && styles.lineValueStrong]}>{value}</Text>
     </View>
   );
@@ -402,8 +409,10 @@ const styles = StyleSheet.create({
   payslipCols: { flexDirection: "row", gap: 20, flexWrap: "wrap" },
   payslipCol: { flexGrow: 1, flexBasis: 220 },
   payslipHead: { fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.6, color: Colors.textSubtle, marginBottom: 8 },
-  lineItem: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 },
+  lineItem: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", paddingVertical: 5 },
   lineItemStrong: { borderTopWidth: 1, borderTopColor: Colors.warmBorder, marginTop: 4, paddingTop: 7 },
+  lineLabelWrap: { flex: 1, paddingRight: 10 },
+  lineDetail: { fontSize: 11, color: Colors.textFaint, marginTop: 1 },
   lineLabel: { fontSize: 13, color: Colors.textBody },
   lineLabelStrong: { fontWeight: "800", color: Colors.textPrimary },
   lineValue: { fontSize: 13, color: Colors.textPrimary, fontVariant: ["tabular-nums"] },
