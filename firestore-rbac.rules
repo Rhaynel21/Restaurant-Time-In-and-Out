@@ -112,5 +112,12 @@ service cloud.firestore {
     // ── Device health / alarms (bridge writes via Admin SDK bypass) ───────
     match /deviceStatus/{doc} { allow read: if signedIn(); allow write: if isManager(); }
     match /deviceAlarms/{doc} { allow read: if signedIn(); allow write: if isManager(); }
+
+    // ── Audit trail — append-only; only admins may read ───────────────────
+    match /auditLog/{doc} {
+      allow read: if isAdmin();
+      allow create: if signedIn();
+      allow update, delete: if false;
+    }
   }
 }

@@ -6,6 +6,7 @@ import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } fr
 
 import { ApprovalsTab } from "@/components/manager/ApprovalsTab";
 import { AttendanceTab } from "@/components/manager/AttendanceTab";
+import { AuditTab } from "@/components/manager/AuditTab";
 import { DashboardTab } from "@/components/manager/DashboardTab";
 import { DevicesTab } from "@/components/manager/DevicesTab";
 import { DocumentsTab } from "@/components/manager/DocumentsTab";
@@ -27,7 +28,7 @@ import { subscribeAlarms } from "@/lib/devices";
 import { subscribePendingLeaves } from "@/lib/leaves";
 import { OrgTree, allowedBranchIds, resolveScope, subscribeOrgTree } from "@/lib/org";
 
-type TabKey = "dashboard" | "analytics" | "attendance" | "dtr" | "schedules" | "employees" | "memo" | "org" | "payroll" | "finalpay" | "documents" | "approvals" | "leaves" | "requests" | "devices";
+type TabKey = "dashboard" | "analytics" | "attendance" | "dtr" | "schedules" | "employees" | "memo" | "org" | "payroll" | "finalpay" | "documents" | "approvals" | "leaves" | "requests" | "devices" | "audit";
 type MdIcon = React.ComponentProps<typeof MaterialCommunityIcons>["name"];
 
 const TABS: { key: TabKey; label: string; icon: MdIcon; title: string; subtitle: string }[] = [
@@ -46,6 +47,7 @@ const TABS: { key: TabKey; label: string; icon: MdIcon; title: string; subtitle:
   { key: "leaves", label: "Leaves", icon: "airplane", title: "Leaves", subtitle: "Every leave request, any status" },
   { key: "requests", label: "OT / Corrections", icon: "clock-edit-outline", title: "OT & DTR Requests", subtitle: "Approve overtime filings and DTR corrections" },
   { key: "devices", label: "Devices", icon: "fingerprint", title: "Devices", subtitle: "Biometric terminals and tamper / security alarms" },
+  { key: "audit", label: "Audit Log", icon: "history", title: "Audit Log", subtitle: "Who changed what, and when (record edits, payroll, approvals)" },
 ];
 
 // Sidebar sections — group the 11 tabs so the nav reads as a hierarchy, not a
@@ -57,7 +59,7 @@ const NAV_GROUPS: { label: string; keys: TabKey[] }[] = [
   { label: "People", keys: ["employees", "org", "documents"] },
   { label: "Leave", keys: ["approvals", "leaves", "requests"] },
   { label: "Communication", keys: ["memo"] },
-  { label: "System", keys: ["devices"] },
+  { label: "System", keys: ["devices", "audit"] },
 ];
 
 export default function ManagerPortal() {
@@ -145,11 +147,12 @@ export default function ManagerPortal() {
       {tab === "employees" && <EmployeesTab managerName={employee.fullName} scope={scope} />}
       {tab === "memo" && <MemoTab managerName={employee.fullName} allowed={allowed} />}
       {tab === "org" && <OrgTab />}
-      {tab === "payroll" && <PayrollTab allowed={allowed} companyId={scope.companyId} />}
+      {tab === "payroll" && <PayrollTab allowed={allowed} companyId={scope.companyId} managerName={employee.fullName} />}
       {tab === "finalpay" && <FinalPayTab allowed={allowed} companyId={scope.companyId} />}
       {tab === "documents" && <DocumentsTab managerName={employee.fullName} allowed={allowed} />}
       {tab === "dtr" && <DtrTab allowed={allowed} />}
       {tab === "devices" && <DevicesTab />}
+      {tab === "audit" && <AuditTab />}
       {tab === "leaves" && <LeavesTab allowed={allowed} />}
       {tab === "requests" && <RequestsTab reviewerName={employee.fullName} allowed={allowed} />}
     </>
@@ -179,7 +182,7 @@ export default function ManagerPortal() {
       </Pressable>
     );
   };
-  const isTabVisible = (key: TabKey) => key !== "org" || canManageOrg;
+  const isTabVisible = (key: TabKey) => (key === "org" || key === "audit" ? canManageOrg : true);
   const flatNav = TABS.filter((t) => isTabVisible(t.key)).map(renderNavButton);
 
   const userBlock = (

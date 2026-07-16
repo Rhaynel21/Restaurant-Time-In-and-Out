@@ -12,6 +12,7 @@ import {
 } from "firebase/firestore";
 
 import { EmployeeProfile } from "@/lib/attendance";
+import { logAudit } from "@/lib/audit";
 import { db } from "@/lib/firebase";
 
 // Employee-filed attendance requests: overtime (pre-)filing and DTR corrections
@@ -121,4 +122,5 @@ export async function reviewAttendanceRequest(id: string, decision: Exclude<Requ
     reviewedBy: reviewer,
     updatedAt: serverTimestamp(),
   });
+  logAudit(decision, "request", id, `Attendance request ${decision}`, reviewer);
 }

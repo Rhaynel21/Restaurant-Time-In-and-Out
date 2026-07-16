@@ -39,7 +39,7 @@ const MONTHS = [
   ["07", "July"], ["08", "August"], ["09", "September"], ["10", "October"], ["11", "November"], ["12", "December"],
 ].map(([value, label]) => ({ value, label }));
 
-export function PayrollTab({ allowed, companyId }: { allowed: Set<string> | null; companyId: string | null }) {
+export function PayrollTab({ allowed, companyId, managerName }: { allowed: Set<string> | null; companyId: string | null; managerName: string }) {
   const [employees, setEmployees] = useState<EmployeeMaster[]>([]);
   const [month, setMonth] = useState(currentMonthValue());
   const [rows, setRows] = useState<PayRow[] | null>(null);
@@ -148,7 +148,7 @@ export function PayrollTab({ allowed, companyId }: { allowed: Set<string> | null
     setSavingFormula(true);
     setFormulaMsg("");
     try {
-      await savePayrollFormula(companyId, draft);
+      await savePayrollFormula(companyId, draft, managerName);
       setFormulaMsg("✓ Formula saved");
     } catch (e) {
       setFormulaMsg("Save failed: " + (e instanceof Error ? e.message : "error"));

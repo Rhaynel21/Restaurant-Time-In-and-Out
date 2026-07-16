@@ -178,7 +178,7 @@ export function EmployeesTab({ managerName, scope }: { managerName: string; scop
     if (!editing || isNew) return;
     setSaving(true);
     try {
-      await deleteEmployee(editing.employeeId);
+      await deleteEmployee(editing.employeeId, managerName);
       setEditing(null);
     } catch (e) {
       setMessage("Failed to delete: " + (e instanceof Error ? e.message : "unknown error"));
@@ -513,7 +513,7 @@ export function EmployeesTab({ managerName, scope }: { managerName: string; scop
   const onDeleteRow = async (e: EmployeeMaster) => {
     if (Platform.OS === "web" && typeof window !== "undefined" && !window.confirm(`Delete ${e.fullName}?`)) return;
     try {
-      await deleteEmployee(e.employeeId);
+      await deleteEmployee(e.employeeId, managerName);
     } catch (err) {
       setMessage("Delete failed: " + (err instanceof Error ? err.message : "unknown error"));
     }

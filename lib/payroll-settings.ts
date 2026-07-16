@@ -1,5 +1,6 @@
 import { doc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
 
+import { logAudit } from "@/lib/audit";
 import { db } from "@/lib/firebase";
 import { DEFAULT_FORMULA, PayFormula } from "@/lib/ph-payroll";
 
@@ -42,10 +43,11 @@ export function subscribePayrollFormula(
   );
 }
 
-export async function savePayrollFormula(companyId: string, formula: PayFormula): Promise<void> {
+export async function savePayrollFormula(companyId: string, formula: PayFormula, actor = "System"): Promise<void> {
   await setDoc(
     doc(db, "companies", companyId),
     { payrollFormula: formula, payrollFormulaUpdatedAt: serverTimestamp() },
     { merge: true },
   );
+  logAudit("save", "payroll", companyId, `Payroll formula updated (${formula.payFrequency})`, actor);
 }

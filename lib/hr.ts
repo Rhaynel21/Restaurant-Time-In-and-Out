@@ -1,5 +1,6 @@
 import { collection, deleteDoc, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc } from "firebase/firestore";
 
+import { logAudit } from "@/lib/audit";
 import { AccessRole } from "@/lib/auth";
 import { db } from "@/lib/firebase";
 import { Loan, coerceLoans } from "@/lib/loans";
@@ -241,9 +242,12 @@ export async function saveEmployeeMaster(rec: EmployeeMaster, updatedBy: string)
     },
     { merge: true },
   );
+  logAudit("save", "employee", id, `${fullName || id} record saved`, updatedBy);
   return id;
 }
 
-export async function deleteEmployee(employeeId: string): Promise<void> {
-  await deleteDoc(doc(db, "employees", employeeId.trim().toUpperCase()));
+export async function deleteEmployee(employeeId: string, actor = "System"): Promise<void> {
+  const id = employeeId.trim().toUpperCase();
+  await deleteDoc(doc(db, "employees", id));
+  logAudit("delete", "employee", id, `Employee ${id} deleted`, actor);
 }

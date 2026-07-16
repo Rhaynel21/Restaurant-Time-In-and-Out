@@ -68,5 +68,12 @@ service cloud.firestore {
     match /deviceAlarms/{doc} {
       allow read, write: if request.auth != null;
     }
+
+    // Audit trail — append-only (no edits/deletes).
+    match /auditLog/{doc} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update, delete: if false;
+    }
   }
 }

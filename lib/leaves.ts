@@ -12,6 +12,7 @@ import {
 } from "firebase/firestore";
 
 import { EmployeeProfile } from "@/lib/attendance";
+import { logAudit } from "@/lib/audit";
 import { db } from "@/lib/firebase";
 
 export type LeaveType = "vacation" | "sick" | "emergency" | "unpaid";
@@ -209,4 +210,5 @@ export async function reviewLeave(
     reviewNote: note?.trim() || null,
     updatedAt: serverTimestamp(),
   });
+  logAudit(decision, "leave", leaveId, `Leave ${decision}`, reviewerName);
 }
