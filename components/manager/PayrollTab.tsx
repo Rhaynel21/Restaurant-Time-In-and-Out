@@ -208,12 +208,13 @@ export function PayrollTab({ allowed, companyId }: { allowed: Set<string> | null
     );
   };
 
-  // BIR alphalist (1604-C style) — taxable vs non-taxable compensation + tax.
+  // Monthly tax summary (per employee). The official ANNUAL BIR alphalist lives
+  // in the Final Pay & 2316 tab (all employees, Jan–Dec, full 1604-C schedule).
   const exportAlphalist = () => {
     if (!rows) return;
     const head = ["TIN", "Employee ID", "Name", "Gross Compensation", "Non-Taxable (contrib + de-minimis)", "Taxable Income", "Tax Withheld"];
     csvDownload(
-      `BIR_Alphalist_${monthTag()}.csv`,
+      `Tax_Summary_${monthTag()}.csv`,
       head,
       rows.map((r) => {
         const s = r.slip;
@@ -266,7 +267,7 @@ export function PayrollTab({ allowed, companyId }: { allowed: Set<string> | null
               </Pressable>
               <Pressable style={[styles.ghostBtn, !rows && styles.ghostDisabled]} disabled={!rows} onPress={exportAlphalist}>
                 <MaterialCommunityIcons name="file-certificate-outline" size={16} color={Colors.primaryDark} />
-                <Text style={styles.ghostText}>BIR Alphalist</Text>
+                <Text style={styles.ghostText}>Tax Summary</Text>
               </Pressable>
               <Pressable style={[styles.ghostBtn, !rows && styles.ghostDisabled]} disabled={!rows} onPress={exportContributions}>
                 <MaterialCommunityIcons name="shield-account-outline" size={16} color={Colors.primaryDark} />

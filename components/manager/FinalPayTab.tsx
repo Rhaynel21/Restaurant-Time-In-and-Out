@@ -71,6 +71,7 @@ export function FinalPayTab({ allowed, companyId }: { allowed: Set<string> | nul
   const [yearText, setYearText] = useState(String(new Date().getFullYear()));
   const [result, setResult] = useState<Result | null>(null);
   const [loading, setLoading] = useState(false);
+  const [alphaBusy, setAlphaBusy] = useState(false);
   const [error, setError] = useState("");
 
   const [formula, setFormula] = useState<PayFormula>(DEFAULT_FORMULA);
@@ -177,6 +178,102 @@ export function FinalPayTab({ allowed, companyId }: { allowed: Set<string> | nul
     setTimeout(() => w.print(), 300);
   };
 
+  const csvDownload = (filename: string, head: string[], records: (string | number)[][]) => {
+    const esc = (v: string | number) => {
+      const s = String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = [head.map(esc).join(","), ...records.map((r) => r.map(esc).join(","))];
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Annual BIR-schedule alphalist (1604-C style) for ALL scoped employees.
+  const exportAnnualAlphalist = async () => {
+    if (Platform.OS !== "web") return;
+    const year = Number(yearText);
+    if (!/^\d{4}$/.test(yearText)) {
+      setError("Enter a valid year (YYYY).");
+      return;
+    }
+    if (scoped.length === 0) {
+      setError("No employees in scope.");
+      return;
+    }
+    setAlphaBusy(true);
+    setError("");
+    try {
+      const rows: (string | number)[][] = [];
+      let seq = 0;
+      for (const e of scoped) {
+        const pay = payBasisOf(e);
+        const inputs = payInputsOf(e);
+        const empLeaves = leaves.filter((l) => l.employeeId === e.employeeId && l.status === "approved");
+        const empReqs = requests.filter((r) => r.employeeId === e.employeeId && r.status === "approved");
+        let gross = 0, basic = 0, deMinimis = 0, sssEE = 0, philEE = 0, pagEE = 0, taxable = 0, tax = 0, months = 0;
+        for (let m = 0; m < 12; m += 1) {
+          const [schedule, records] = await Promise.all([
+            getSchedule(e.employeeId),
+            getAttendanceForMonth(e.employeeId, year, m),
+          ]);
+          if (records.length === 0) continue;
+          const slip = computePayslip(buildDtr(year, m, schedule, records, { leaves: empLeaves, requests: empReqs }), pay, inputs, formula);
+          if (slip.grossPay <= 0) continue;
+          months += 1;
+          gross += slip.grossPay;
+          basic += slip.basicPay;
+          deMinimis += slip.deMinimis;
+          sssEE += slip.sssEE;
+          philEE += slip.philhealthEE;
+          pagEE += slip.pagibigEE;
+          taxable += slip.taxableIncome;
+          tax += slip.withholdingTax;
+        }
+        if (months === 0) continue;
+        const thirteenth = round2(basic / 12);
+        const nonTax13 = Math.min(thirteenth, 90000); // 13th month & other benefits — non-taxable up to ₱90k
+        const taxable13 = Math.max(0, round2(thirteenth - 90000));
+        const contribs = round2(sssEE + philEE + pagEE);
+        const grossComp = round2(gross + thirteenth);
+        const totalNonTax = round2(contribs + deMinimis + nonTax13);
+        const taxableComp = round2(taxable + taxable13);
+        const taxDue = annualWithholdingTax(taxableComp);
+        const withheld = round2(tax);
+        seq += 1;
+        rows.push([
+          seq, e.tin, e.lastName, e.firstName, "", e.status === "inactive" ? "T (terminated)" : "R (regular)",
+          grossComp,
+          nonTax13, deMinimis, sssEE, philEE, pagEE, 0, 0, totalNonTax,
+          taxableComp, 0, taxableComp,
+          taxDue, withheld, round2(withheld - taxDue),
+        ]);
+      }
+      if (rows.length === 0) {
+        setError(`No payroll data found for ${year}.`);
+        setAlphaBusy(false);
+        return;
+      }
+      const head = [
+        "Seq No.", "TIN", "Last Name", "First Name", "Middle Name", "Employee Status",
+        "Gross Compensation Income",
+        "13th Month & Other Benefits (max 90k)", "De Minimis", "SSS", "PhilHealth", "Pag-IBIG",
+        "Union Dues", "SMW / Holiday / OT / Night-Diff (MWE)", "Total Non-Taxable",
+        "Taxable - Present Employer", "Taxable - Previous Employer", "Total Taxable Compensation",
+        "Tax Due", "Tax Withheld", "Over / (Under) Withheld",
+      ];
+      csvDownload(`BIR_Alphalist_1604C_${year}.csv`, head, rows);
+    } catch (e) {
+      setError("Failed to build alphalist: " + (e instanceof Error ? e.message : "error"));
+    } finally {
+      setAlphaBusy(false);
+    }
+  };
+
   return (
     <View>
       <SectionTitle>Employee</SectionTitle>
@@ -219,6 +316,10 @@ export function FinalPayTab({ allowed, companyId }: { allowed: Set<string> | nul
           <Pressable style={[styles.ghostBtn, !selected && styles.ghostDisabled]} disabled={!selected} onPress={printCOE}>
             <MaterialCommunityIcons name="file-document-outline" size={16} color={Colors.primaryDark} />
             <Text style={styles.ghostText}>Print COE</Text>
+          </Pressable>
+          <Pressable style={[styles.ghostBtn, (scoped.length === 0 || alphaBusy) && styles.ghostDisabled]} disabled={scoped.length === 0 || alphaBusy} onPress={exportAnnualAlphalist}>
+            <MaterialCommunityIcons name="table-large" size={16} color={Colors.primaryDark} />
+            <Text style={styles.ghostText}>{alphaBusy ? "Building…" : "Annual Alphalist"}</Text>
           </Pressable>
         </View>
         <Text style={styles.hint}>
