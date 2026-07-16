@@ -119,5 +119,13 @@ service cloud.firestore {
       allow create: if signedIn();
       allow update, delete: if false;
     }
+
+    // ── In-app notifications: read/update your own; anyone signed-in creates ──
+    match /notifications/{doc} {
+      allow read:   if signedIn() && resource.data.toEmployeeId == myEmp();
+      allow create: if signedIn();
+      allow update: if signedIn() && resource.data.toEmployeeId == myEmp();
+      allow delete: if false;
+    }
   }
 }

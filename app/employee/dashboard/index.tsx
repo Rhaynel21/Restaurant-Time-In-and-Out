@@ -10,6 +10,7 @@ import { useSession } from "@/contexts/session-context";
 import { useResponsiveInset } from "@/hooks/use-responsive";
 import { AttendanceRecord, subscribeTodayAttendance } from "@/lib/attendance";
 import { DeviceStatus, isDeviceOnline, subscribeDevices } from "@/lib/devices";
+import { subscribeMyNotifications } from "@/lib/notifications";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -31,6 +32,7 @@ export default function Dashboard() {
   const [breakInAt, setBreakInAt] = useState<Date | null>(null);
   const [isLive, setIsLive] = useState(false);
   const [devices, setDevices] = useState<DeviceStatus[]>([]);
+  const [notifUnread, setNotifUnread] = useState(0);
 
   const isCheckedIn = checkInAt !== null && checkOutAt === null;
 
@@ -70,6 +72,10 @@ export default function Dashboard() {
   // Biometric terminal health, so we can tell the employee when their scans are
   // being buffered offline (rather than silently missing).
   useEffect(() => subscribeDevices(setDevices, () => setDevices([])), []);
+  useEffect(() => {
+    if (!employee) return;
+    return subscribeMyNotifications(employee.employeeId, (n) => setNotifUnread(n.filter((x) => !x.read).length), () => setNotifUnread(0));
+  }, [employee]);
 
   const timeLabel = currentTime.toLocaleTimeString("en-US", {
     hour: "2-digit",
@@ -350,6 +356,22 @@ export default function Dashboard() {
             <Text style={styles.scheduleLinkTitle}>File a Request</Text>
             <Text style={styles.scheduleLinkSub}>Overtime or DTR correction</Text>
           </View>
+          <Ionicons name="chevron-forward" size={18} color="#A8A8A8" />
+        </Pressable>
+
+        <Pressable style={styles.scheduleLink} onPress={() => router.push("/employee/notifications" as never)}>
+          <View style={styles.scheduleLinkIcon}>
+            <MaterialCommunityIcons name="bell-outline" size={20} color="#0A0A0A" />
+          </View>
+          <View style={styles.scheduleLinkText}>
+            <Text style={styles.scheduleLinkTitle}>Notifications</Text>
+            <Text style={styles.scheduleLinkSub}>{notifUnread > 0 ? `${notifUnread} unread` : "You're all caught up"}</Text>
+          </View>
+          {notifUnread > 0 && (
+            <View style={styles.notifBadge}>
+              <Text style={styles.notifBadgeText}>{notifUnread}</Text>
+            </View>
+          )}
           <Ionicons name="chevron-forward" size={18} color="#A8A8A8" />
         </Pressable>
       </ScrollView>
@@ -685,6 +707,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   scheduleLinkText: { flex: 1 },
+  notifBadge: { minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 6, backgroundColor: "#B23A3A", alignItems: "center", justifyContent: "center", marginRight: 8 },
+  notifBadgeText: { color: "#fff", fontSize: 12, fontWeight: "800" },
   scheduleLinkTitle: { fontSize: 15, fontWeight: "700", color: "#141414" },
   scheduleLinkSub: { fontSize: 12, color: "#A8A8A8", fontWeight: "500", marginTop: 2 },
   metricCard: {

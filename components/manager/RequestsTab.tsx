@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Badge, Card, EmptyState, SectionTitle } from "@/components/manager/ui";
 import { ManagerColors as Colors } from "@/constants/theme";
 import { AttendanceRequest, reviewAttendanceRequest, subscribeAllRequests } from "@/lib/attendance-requests";
+import { notify } from "@/lib/notifications";
 import { inScope } from "@/lib/org";
 
 function detail(r: AttendanceRequest): string {
@@ -22,10 +23,12 @@ export function RequestsTab({ reviewerName, allowed }: { reviewerName: string; a
   const pending = scoped.filter((r) => r.status === "pending");
   const history = scoped.filter((r) => r.status !== "pending");
 
-  const act = async (id: string, decision: "approved" | "rejected") => {
-    setBusy(id);
+  const act = async (r: AttendanceRequest, decision: "approved" | "rejected") => {
+    setBusy(r.id);
     try {
-      await reviewAttendanceRequest(id, decision, reviewerName);
+      await reviewAttendanceRequest(r.id, decision, reviewerName);
+      const what = r.kind === "overtime" ? `Overtime (${r.hours ?? 0} h) on ${r.date}` : `DTR correction on ${r.date}`;
+      notify(r.employeeId, `Request ${decision}`, `${what} was ${decision}.`, decision === "approved" ? "success" : "warning");
     } finally {
       setBusy(null);
     }
@@ -52,10 +55,10 @@ export function RequestsTab({ reviewerName, allowed }: { reviewerName: string; a
             </View>
             {r.reason ? <Text style={styles.reason}>{r.reason}</Text> : null}
             <View style={styles.actions}>
-              <Pressable style={[styles.reject, busy === r.id && styles.dim]} disabled={busy === r.id} onPress={() => act(r.id, "rejected")}>
+              <Pressable style={[styles.reject, busy === r.id && styles.dim]} disabled={busy === r.id} onPress={() => act(r, "rejected")}>
                 <Text style={styles.rejectText}>Reject</Text>
               </Pressable>
-              <Pressable style={[styles.approve, busy === r.id && styles.dim]} disabled={busy === r.id} onPress={() => act(r.id, "approved")}>
+              <Pressable style={[styles.approve, busy === r.id && styles.dim]} disabled={busy === r.id} onPress={() => act(r, "approved")}>
                 <MaterialCommunityIcons name="check" size={16} color="#fff" />
                 <Text style={styles.approveText}>Approve</Text>
               </Pressable>

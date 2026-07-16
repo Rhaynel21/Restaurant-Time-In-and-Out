@@ -11,6 +11,7 @@ import {
   reviewLeave,
   subscribePendingLeaves,
 } from "@/lib/leaves";
+import { notify } from "@/lib/notifications";
 
 const ICON: Record<string, React.ComponentProps<typeof MaterialCommunityIcons>["name"]> = {
   vacation: "umbrella-beach",
@@ -32,10 +33,16 @@ export function ApprovalsTab({ reviewerName }: { reviewerName: string }) {
 
   useEffect(() => subscribePendingLeaves(setItems, () => setItems([])), []);
 
-  const decide = async (id: string, decision: "approved" | "rejected") => {
+  const decide = async (l: LeaveRequest, decision: "approved" | "rejected") => {
     try {
-      setBusy(id);
-      await reviewLeave(id, decision, reviewerName);
+      setBusy(l.id);
+      await reviewLeave(l.id, decision, reviewerName);
+      notify(
+        l.employeeId,
+        `Leave ${decision}`,
+        `Your ${typeLabel(l.type).toLowerCase()} leave (${formatRange(l.startDate, l.endDate)}) was ${decision}.`,
+        decision === "approved" ? "success" : "warning",
+      );
     } catch (e) {
       console.error(e);
     } finally {
@@ -68,14 +75,14 @@ export function ApprovalsTab({ reviewerName }: { reviewerName: string }) {
               <Pressable
                 style={[styles.btn, styles.reject]}
                 disabled={busy === l.id}
-                onPress={() => decide(l.id, "rejected")}
+                onPress={() => decide(l, "rejected")}
               >
                 <Text style={styles.rejectText}>Reject</Text>
               </Pressable>
               <Pressable
                 style={[styles.btn, styles.approve]}
                 disabled={busy === l.id}
-                onPress={() => decide(l.id, "approved")}
+                onPress={() => decide(l, "approved")}
               >
                 <Text style={styles.approveText}>{busy === l.id ? "Saving…" : "Approve"}</Text>
               </Pressable>
