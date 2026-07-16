@@ -7,6 +7,7 @@ import { ManagerColors as Colors } from "@/constants/theme";
 import { getAttendanceForMonth } from "@/lib/attendance";
 import { buildDtr } from "@/lib/dtr";
 import { EmployeeMaster, subscribeEmployeeMasters } from "@/lib/hr";
+import { loanBalanceAfter, loanDeductionForMonth } from "@/lib/loans";
 import { inScope } from "@/lib/org";
 import { savePayrollFormula, subscribePayrollFormula } from "@/lib/payroll-settings";
 import { DEFAULT_FORMULA, PH_RATES_VERSION, PayBasis, PayFormula, PayInputs, Payslip as PayslipData, computePeriodPayslip, payPeriods, peso } from "@/lib/ph-payroll";
@@ -97,6 +98,10 @@ export function PayrollTab({ allowed, companyId }: { allowed: Set<string> | null
               { label: "SSS Loan", amount: e.sssLoan },
               { label: "Pag-IBIG Loan", amount: e.pagibigLoan },
               { label: "Cash Advance", amount: e.cashAdvance },
+              ...e.loans.map((l) => ({
+                label: `${l.label} · bal ${peso(loanBalanceAfter(l, month))}`,
+                amount: loanDeductionForMonth(l, month),
+              })),
             ],
           };
           const slip = computePeriodPayslip(dtr, pay, inputs, formula, period);

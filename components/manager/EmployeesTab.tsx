@@ -6,9 +6,19 @@ import { Badge, Card, EmptyState, SectionTitle } from "@/components/manager/ui";
 import { ManagerColors as Colors } from "@/constants/theme";
 import { AccessRole } from "@/lib/auth";
 import { EmployeeMaster, blankEmployee, deleteEmployee, saveEmployeeMaster, subscribeEmployeeMasters } from "@/lib/hr";
+import { LOAN_TYPES, Loan, loanBalanceAfter, loanTypeLabel } from "@/lib/loans";
 import { OrgTree, Scope, subscribeOrgTree } from "@/lib/org";
+import { peso } from "@/lib/ph-payroll";
 
 const ACCESS_ROLES: AccessRole[] = ["owner", "admin", "manager", "staff"];
+
+function thisMonthValue() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+function emptyLoan(): Loan {
+  return { type: "sss", label: "", principal: 0, monthlyAmortization: 0, startMonth: thisMonthValue() };
+}
 
 function fmtDate(d: Date | null) {
   if (!d) return "—";
@@ -53,6 +63,7 @@ export function EmployeesTab({ managerName, scope }: { managerName: string; scop
   const [sortKey, setSortKey] = useState<ColKey>("firstName");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [rowMenuId, setRowMenuId] = useState<string | null>(null);
+  const [loanDraft, setLoanDraft] = useState<Loan>(emptyLoan);
   const [visibleCols, setVisibleCols] = useState<Record<ColKey, boolean>>(
     () => Object.fromEntries(COLUMNS.map((c) => [c.key, DEFAULT_VISIBLE.includes(c.key)])) as Record<ColKey, boolean>,
   );
@@ -125,6 +136,16 @@ export function EmployeesTab({ managerName, scope }: { managerName: string; scop
   const setNum = (key: keyof EmployeeMaster, nullable: boolean) => (t: string) => {
     const n = parseFloat(t.replace(/[^0-9.]/g, ""));
     patch({ [key]: Number.isFinite(n) ? n : nullable ? null : 0 } as Partial<EmployeeMaster>);
+  };
+  const loanNum = (key: "principal" | "monthlyAmortization") => (t: string) => {
+    const n = parseFloat(t.replace(/[^0-9.]/g, ""));
+    setLoanDraft((d) => ({ ...d, [key]: Number.isFinite(n) ? n : 0 }));
+  };
+  const addLoan = () => {
+    if (!editing || loanDraft.monthlyAmortization <= 0 || !/^\d{4}-\d{2}$/.test(loanDraft.startMonth)) return;
+    const label = loanDraft.label.trim() || loanTypeLabel(loanDraft.type);
+    patch({ loans: [...editing.loans, { ...loanDraft, label }] });
+    setLoanDraft(emptyLoan());
   };
 
   const save = async () => {
@@ -332,6 +353,53 @@ export function EmployeesTab({ managerName, scope }: { managerName: string; scop
           <Field label="Cash advance / other deduction (₱ / mo)">
             <TextInput style={styles.input} value={e.cashAdvance ? String(e.cashAdvance) : ""} keyboardType="numeric" onChangeText={setNum("cashAdvance", false)} placeholder="0" placeholderTextColor={Colors.textPlaceholder} />
           </Field>
+        </Card>
+
+        {/* ── Loans (amortizing — running balance auto-decrements to zero) ── */}
+        <SectionTitle>Loans</SectionTitle>
+        <Card>
+          {e.loans.length === 0 ? (
+            <Text style={styles.scopeNote}>No active loans. Add SSS / Pag-IBIG / company loans or cash advances — each deducts monthly until fully paid.</Text>
+          ) : (
+            e.loans.map((l, i) => (
+              <View key={i} style={styles.loanRow}>
+                <View style={styles.grow}>
+                  <Text style={styles.loanTitle}>{l.label}</Text>
+                  <Text style={styles.loanSub}>{peso(l.monthlyAmortization)}/mo · from {l.startMonth} · principal {peso(l.principal)}</Text>
+                  <Text style={styles.loanBal}>Balance now: {peso(loanBalanceAfter(l, thisMonthValue()))}</Text>
+                </View>
+                <Pressable style={styles.loanDel} onPress={() => patch({ loans: e.loans.filter((_, idx) => idx !== i) })}>
+                  <MaterialCommunityIcons name="trash-can-outline" size={18} color={Colors.danger} />
+                </Pressable>
+              </View>
+            ))
+          )}
+
+          <View style={styles.loanAdd}>
+            <Text style={styles.label}>Add loan</Text>
+            <View style={styles.segRow}>
+              {LOAN_TYPES.map((t) => (
+                <Pressable key={t.value} style={[styles.seg, loanDraft.type === t.value && styles.segOn]} onPress={() => setLoanDraft((d) => ({ ...d, type: t.value }))}>
+                  <Text style={[styles.segText, loanDraft.type === t.value && styles.segTextOn]}>{t.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.formGrid}>
+              <Field label="Principal (₱)" grow>
+                <TextInput style={styles.input} value={loanDraft.principal ? String(loanDraft.principal) : ""} keyboardType="numeric" onChangeText={loanNum("principal")} placeholder="20000" placeholderTextColor={Colors.textPlaceholder} />
+              </Field>
+              <Field label="Monthly amortization (₱)" grow>
+                <TextInput style={styles.input} value={loanDraft.monthlyAmortization ? String(loanDraft.monthlyAmortization) : ""} keyboardType="numeric" onChangeText={loanNum("monthlyAmortization")} placeholder="1667" placeholderTextColor={Colors.textPlaceholder} />
+              </Field>
+              <Field label="Start month (YYYY-MM)" grow>
+                <TextInput style={styles.input} value={loanDraft.startMonth} onChangeText={(t) => setLoanDraft((d) => ({ ...d, startMonth: t }))} placeholder="2026-07" placeholderTextColor={Colors.textPlaceholder} />
+              </Field>
+            </View>
+            <Pressable style={styles.addLoanBtn} onPress={addLoan}>
+              <MaterialCommunityIcons name="plus" size={18} color="#fff" />
+              <Text style={styles.addLoanText}>Add loan</Text>
+            </Pressable>
+          </View>
         </Card>
 
         {/* ── Personal details ── */}
@@ -721,6 +789,14 @@ const styles = StyleSheet.create({
   message: { marginTop: 12, color: Colors.textMuted, fontWeight: "600", fontSize: 13 },
   note: { marginTop: 10, color: Colors.textFaint, fontSize: 12, lineHeight: 17 },
   scopeNote: { color: Colors.textMuted, fontSize: 13, lineHeight: 18, marginBottom: 14 },
+  loanRow: { flexDirection: "row", alignItems: "flex-start", gap: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.hairline },
+  loanTitle: { fontSize: 14, fontWeight: "700", color: Colors.textPrimary },
+  loanSub: { fontSize: 12, color: Colors.textMuted, marginTop: 2 },
+  loanBal: { fontSize: 12, fontWeight: "700", color: Colors.primary, marginTop: 3 },
+  loanDel: { width: 38, height: 38, borderRadius: 9, backgroundColor: Colors.dangerTint, alignItems: "center", justifyContent: "center" },
+  loanAdd: { marginTop: 14 },
+  addLoanBtn: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", height: 42, paddingHorizontal: 16, borderRadius: 11, backgroundColor: Colors.primary, marginTop: 6 },
+  addLoanText: { color: "#fff", fontWeight: "700", fontSize: 14 },
 
   // Toolbar
   toolbarBtns: { flexDirection: "row", alignItems: "center", gap: 8 },

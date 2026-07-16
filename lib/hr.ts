@@ -2,6 +2,7 @@ import { collection, deleteDoc, doc, getDoc, onSnapshot, query, serverTimestamp,
 
 import { AccessRole } from "@/lib/auth";
 import { db } from "@/lib/firebase";
+import { Loan, coerceLoans } from "@/lib/loans";
 
 // HR employee master ("201 file"). Backed by the same `employees/{ID}` docs the
 // rest of the app reads, extended with HR fields (department, hire date, daily
@@ -37,6 +38,7 @@ export type EmployeeMaster = {
   sssLoan: number; // monthly SSS salary-loan amortization
   pagibigLoan: number; // monthly Pag-IBIG loan amortization
   cashAdvance: number; // cash advance / other recurring deduction
+  loans: Loan[]; // amortizing loans with a derived running balance
   status: EmployeeStatus;
   // ── 201 file: personal details ──
   birthDate: string | null; // YYYY-MM-DD
@@ -93,6 +95,7 @@ function toMaster(id: string, data: Record<string, unknown>): EmployeeMaster {
     sssLoan: typeof data.sssLoan === "number" ? data.sssLoan : 0,
     pagibigLoan: typeof data.pagibigLoan === "number" ? data.pagibigLoan : 0,
     cashAdvance: typeof data.cashAdvance === "number" ? data.cashAdvance : 0,
+    loans: coerceLoans(data.loans),
     status: data.status === "inactive" ? "inactive" : "active",
     birthDate: typeof data.birthDate === "string" ? data.birthDate : null,
     gender: (["male", "female", "other"].includes(data.gender as string) ? data.gender : "") as Gender,
@@ -134,6 +137,7 @@ export function blankEmployee(): EmployeeMaster {
     sssLoan: 0,
     pagibigLoan: 0,
     cashAdvance: 0,
+    loans: [],
     status: "active",
     birthDate: null,
     gender: "",
@@ -210,6 +214,7 @@ export async function saveEmployeeMaster(rec: EmployeeMaster, updatedBy: string)
       sssLoan: rec.sssLoan,
       pagibigLoan: rec.pagibigLoan,
       cashAdvance: rec.cashAdvance,
+      loans: rec.loans,
       status: rec.status,
       birthDate: rec.birthDate,
       gender: rec.gender,

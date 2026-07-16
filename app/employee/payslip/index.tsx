@@ -11,6 +11,7 @@ import { useResponsiveInset } from "@/hooks/use-responsive";
 import { getAttendanceForMonth } from "@/lib/attendance";
 import { buildDtr } from "@/lib/dtr";
 import { EmployeeMaster, subscribeEmployeeMaster } from "@/lib/hr";
+import { loanBalanceAfter, loanDeductionForMonth } from "@/lib/loans";
 import { subscribePayrollFormula } from "@/lib/payroll-settings";
 import { DEFAULT_FORMULA, PayBasis, PayFormula, PayInputs, Payslip as PayslipData, computePayslip, peso } from "@/lib/ph-payroll";
 import { getSchedule } from "@/lib/schedules";
@@ -62,6 +63,10 @@ export default function EmployeePayslip() {
         { label: "SSS Loan", amount: master.sssLoan },
         { label: "Pag-IBIG Loan", amount: master.pagibigLoan },
         { label: "Cash Advance", amount: master.cashAdvance },
+        ...master.loans.map((l) => ({
+          label: `${l.label} · bal ${peso(loanBalanceAfter(l, month))}`,
+          amount: loanDeductionForMonth(l, month),
+        })),
       ],
     };
     (async () => {
