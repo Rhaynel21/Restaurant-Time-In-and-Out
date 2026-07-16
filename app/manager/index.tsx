@@ -1,4 +1,5 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { Redirect, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { Image, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
@@ -15,7 +16,7 @@ import { MemoTab } from "@/components/manager/MemoTab";
 import { OrgTab } from "@/components/manager/OrgTab";
 import { PayrollTab } from "@/components/manager/PayrollTab";
 import { SchedulesTab } from "@/components/manager/SchedulesTab";
-import { Colors } from "@/constants/theme";
+import { ManagerColors as Colors } from "@/constants/theme";
 import { useSession } from "@/contexts/session-context";
 import { signOutUser } from "@/lib/auth";
 import { subscribeAlarms } from "@/lib/devices";
@@ -167,7 +168,12 @@ export default function ManagerPortal() {
   if (wide) {
     return (
       <View style={styles.screenRow}>
-        <View style={styles.sidebar}>
+        <LinearGradient
+          colors={["#5E6F3F", "#4F5D3A"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.sidebar}
+        >
           <View style={styles.brand}>
             <Image
               source={require("../../assets/images/qui-logo-light.png")}
@@ -185,7 +191,7 @@ export default function ManagerPortal() {
             ))}
           </ScrollView>
           {userBlock}
-        </View>
+        </LinearGradient>
         <View style={styles.main}>
           <View style={styles.topbar}>
             <Text style={styles.topTitle}>{active.title}</Text>

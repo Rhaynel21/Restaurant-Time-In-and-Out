@@ -43,6 +43,55 @@ export const Colors = {
   shadowWarm: "#0A0A0A",
 };
 
+// ── Admin / Manager web portal — Brand Greens ───────────────────────────────
+// Scoped to the manager portal only (the employee mobile app keeps the
+// monochrome ink theme). Same token names as `Colors`, so manager components
+// opt in with: `import { ManagerColors as Colors } from "@/constants/theme"`.
+export const ManagerColors = {
+  // Brand greens
+  primary: "#5E6F3F",        // Primary green — buttons, active nav, icons
+  primaryDark: "#4F5D3A",    // Deep olive — pressed / hover / gradient end
+  primaryDeep: "#3F4E2A",    // Deep text green — strong accents
+  primaryTint: "rgba(94, 111, 63, 0.10)",
+  primaryTintStrong: "rgba(94, 111, 63, 0.18)",
+  accent: "#8FA17A",         // Accent sage — arrows, subtle highlights
+
+  // Surfaces
+  background: "#F4F1EC",     // Page background (cream)
+  cardSurface: "#FFFFFF",
+  warmSurface: "#F9FAFB",    // Muted panel / hover
+  warmSurfaceAlt: "#EEF1EA", // Slightly deeper sage wash
+  warmBorder: "#E5E7EB",     // Inputs / borders
+
+  // Dark (green) surface — sidebar solid fallback, avatars, mobile bar
+  darkSurface: "#4F5D3A",
+  darkSurfaceAlt: "#3F4E2A",
+
+  // Text
+  textPrimary: "#3F4E2A",    // Deep text green — titles & strong text
+  textBody: "#374151",       // Body gray
+  textMuted: "#6B7280",      // Muted / secondary
+  textSubtle: "#6B7280",
+  textFaint: "#9CA3AF",
+  textPlaceholder: "#C4CAD3",
+  textOnDark: "#F4F1EC",     // Cream on green
+
+  // Status
+  success: "#16A34A",
+  successTint: "rgba(22, 163, 74, 0.10)",
+  warning: "#B45309",
+  warningDeep: "#92400E",
+  warningSurface: "#FEF3E2",
+  warningBorder: "#F5D9A8",
+  danger: "#991B1B",
+  dangerTint: "rgba(153, 27, 27, 0.08)",
+  info: "#2563EB",
+
+  // Hairline / shadow
+  hairline: "#E5E7EB",
+  shadowWarm: "#2F3824",
+};
+
 export const Fonts = {
   rounded: undefined as string | undefined,
   mono: undefined as string | undefined,

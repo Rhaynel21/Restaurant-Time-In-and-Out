@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Card, SectionTitle } from "@/components/manager/ui";
-import { Colors } from "@/constants/theme";
+import { ManagerColors as Colors } from "@/constants/theme";
 import {
   Branch,
   Brand,

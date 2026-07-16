@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { Badge, Card, EmptyState, SectionTitle } from "@/components/manager/ui";
-import { Colors } from "@/constants/theme";
+import { ManagerColors as Colors } from "@/constants/theme";
 import { AttendanceRecord, subscribeAllTodayAttendance } from "@/lib/attendance";
 import { inScope } from "@/lib/org";
 

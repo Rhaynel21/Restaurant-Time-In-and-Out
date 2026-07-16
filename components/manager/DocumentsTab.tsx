@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 import { Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Card, EmptyState, SectionTitle } from "@/components/manager/ui";
-import { Colors } from "@/constants/theme";
+import { ManagerColors as Colors } from "@/constants/theme";
 import {
   EmployeeDocument,
   deleteEmployeeDocument,

@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Badge, Card, EmptyState, SectionTitle } from "@/components/manager/ui";
-import { Colors } from "@/constants/theme";
+import { ManagerColors as Colors } from "@/constants/theme";
 import { EmployeeSummary, subscribeEmployees } from "@/lib/employees";
 import { Memo, MemoStatus, createMemo, subscribeMemos } from "@/lib/memos";
 import { inScope } from "@/lib/org";

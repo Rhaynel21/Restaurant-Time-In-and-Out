@@ -4,7 +4,7 @@ import { StyleSheet, Text, View } from "react-native";
 
 import { BarChart, BarDatum } from "@/components/manager/BarChart";
 import { Badge, Card, EmptyState, SectionTitle } from "@/components/manager/ui";
-import { Colors } from "@/constants/theme";
+import { ManagerColors as Colors } from "@/constants/theme";
 import { AttendanceRecord, getAttendanceSince, subscribeAllTodayAttendance } from "@/lib/attendance";
 import { inScope } from "@/lib/org";
 

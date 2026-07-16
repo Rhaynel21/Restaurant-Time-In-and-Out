@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Badge, Card, EmptyState, SectionTitle } from "@/components/manager/ui";
-import { Colors } from "@/constants/theme";
+import { ManagerColors as Colors } from "@/constants/theme";
 import { AccessRole } from "@/lib/auth";
 import { EmployeeMaster, blankEmployee, deleteEmployee, saveEmployeeMaster, subscribeEmployeeMasters } from "@/lib/hr";
 import { OrgTree, Scope, subscribeOrgTree } from "@/lib/org";

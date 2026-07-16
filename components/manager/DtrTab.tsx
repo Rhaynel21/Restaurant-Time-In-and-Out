@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Card, EmptyState, SectionTitle } from "@/components/manager/ui";
-import { Colors } from "@/constants/theme";
+import { ManagerColors as Colors } from "@/constants/theme";
 import { getAttendanceForMonth } from "@/lib/attendance";
 import { Dtr, buildDtr, formatClock, formatHours, statusLabel } from "@/lib/dtr";
 import { EmployeeSummary, subscribeEmployees } from "@/lib/employees";

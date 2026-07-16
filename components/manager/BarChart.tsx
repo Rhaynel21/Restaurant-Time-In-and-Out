@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { LayoutChangeEvent, StyleSheet, Text, View } from "react-native";
 import Svg, { Line, Rect, Text as SvgText } from "react-native-svg";
 
-import { Colors } from "@/constants/theme";
+import { ManagerColors as Colors } from "@/constants/theme";
 
 export type BarDatum = { label: string; value: number };
 
