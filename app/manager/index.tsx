@@ -11,6 +11,7 @@ import { DevicesTab } from "@/components/manager/DevicesTab";
 import { DocumentsTab } from "@/components/manager/DocumentsTab";
 import { DtrTab } from "@/components/manager/DtrTab";
 import { EmployeesTab } from "@/components/manager/EmployeesTab";
+import { FinalPayTab } from "@/components/manager/FinalPayTab";
 import { LeavesTab } from "@/components/manager/LeavesTab";
 import { MemoTab } from "@/components/manager/MemoTab";
 import { OrgTab } from "@/components/manager/OrgTab";
@@ -23,7 +24,7 @@ import { subscribeAlarms } from "@/lib/devices";
 import { subscribePendingLeaves } from "@/lib/leaves";
 import { OrgTree, allowedBranchIds, resolveScope, subscribeOrgTree } from "@/lib/org";
 
-type TabKey = "dashboard" | "attendance" | "dtr" | "schedules" | "employees" | "memo" | "org" | "payroll" | "documents" | "approvals" | "leaves" | "devices";
+type TabKey = "dashboard" | "attendance" | "dtr" | "schedules" | "employees" | "memo" | "org" | "payroll" | "finalpay" | "documents" | "approvals" | "leaves" | "devices";
 type MdIcon = React.ComponentProps<typeof MaterialCommunityIcons>["name"];
 
 const TABS: { key: TabKey; label: string; icon: MdIcon; title: string; subtitle: string }[] = [
@@ -35,6 +36,7 @@ const TABS: { key: TabKey; label: string; icon: MdIcon; title: string; subtitle:
   { key: "memo", label: "Memo", icon: "email-outline", title: "Memo", subtitle: "Compose and send memos to employees" },
   { key: "org", label: "Org", icon: "sitemap-outline", title: "Organization", subtitle: "Departments and branches at a glance" },
   { key: "payroll", label: "Payroll", icon: "cash-multiple", title: "Payroll", subtitle: "Compute monthly gross pay from DTR hours and rates" },
+  { key: "finalpay", label: "Final Pay", icon: "account-cash-outline", title: "Final Pay & BIR 2316", subtitle: "Separation pay, pro-rated 13th month, SIL conversion, and BIR Form 2316" },
   { key: "documents", label: "Documents", icon: "folder-account-outline", title: "Documents", subtitle: "Upload and manage each employee's 201 files" },
   { key: "approvals", label: "Approvals", icon: "checkbox-marked-circle-outline", title: "Approvals", subtitle: "Pending leave requests awaiting your review" },
   { key: "leaves", label: "Leaves", icon: "airplane", title: "Leaves", subtitle: "Every leave request, any status" },
@@ -46,7 +48,7 @@ const TABS: { key: TabKey; label: string; icon: MdIcon; title: string; subtitle:
 const NAV_GROUPS: { label: string; keys: TabKey[] }[] = [
   { label: "", keys: ["dashboard"] },
   { label: "Time & Attendance", keys: ["attendance", "dtr", "schedules"] },
-  { label: "People", keys: ["employees", "memo", "org", "payroll", "documents"] },
+  { label: "People", keys: ["employees", "memo", "org", "payroll", "finalpay", "documents"] },
   { label: "Leave", keys: ["approvals", "leaves"] },
   { label: "System", keys: ["devices"] },
 ];
@@ -112,10 +114,11 @@ export default function ManagerPortal() {
       {tab === "memo" && <MemoTab managerName={employee.fullName} allowed={allowed} />}
       {tab === "org" && <OrgTab />}
       {tab === "payroll" && <PayrollTab allowed={allowed} />}
+      {tab === "finalpay" && <FinalPayTab allowed={allowed} />}
       {tab === "documents" && <DocumentsTab managerName={employee.fullName} allowed={allowed} />}
       {tab === "dtr" && <DtrTab allowed={allowed} />}
       {tab === "devices" && <DevicesTab />}
-      {tab === "leaves" && <LeavesTab />}
+      {tab === "leaves" && <LeavesTab allowed={allowed} />}
     </>
   );
 
