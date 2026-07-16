@@ -18,6 +18,7 @@ import { OrgTab } from "@/components/manager/OrgTab";
 import { PayrollTab } from "@/components/manager/PayrollTab";
 import { RequestsTab } from "@/components/manager/RequestsTab";
 import { SchedulesTab } from "@/components/manager/SchedulesTab";
+import { WorkforceTab } from "@/components/manager/WorkforceTab";
 import { ManagerColors as Colors } from "@/constants/theme";
 import { useSession } from "@/contexts/session-context";
 import { signOutUser } from "@/lib/auth";
@@ -26,11 +27,12 @@ import { subscribeAlarms } from "@/lib/devices";
 import { subscribePendingLeaves } from "@/lib/leaves";
 import { OrgTree, allowedBranchIds, resolveScope, subscribeOrgTree } from "@/lib/org";
 
-type TabKey = "dashboard" | "attendance" | "dtr" | "schedules" | "employees" | "memo" | "org" | "payroll" | "finalpay" | "documents" | "approvals" | "leaves" | "requests" | "devices";
+type TabKey = "dashboard" | "analytics" | "attendance" | "dtr" | "schedules" | "employees" | "memo" | "org" | "payroll" | "finalpay" | "documents" | "approvals" | "leaves" | "requests" | "devices";
 type MdIcon = React.ComponentProps<typeof MaterialCommunityIcons>["name"];
 
 const TABS: { key: TabKey; label: string; icon: MdIcon; title: string; subtitle: string }[] = [
   { key: "dashboard", label: "Dashboard", icon: "view-dashboard-outline", title: "Dashboard", subtitle: "Today's time in & out at a glance" },
+  { key: "analytics", label: "Analytics", icon: "chart-box-outline", title: "Workforce Analytics", subtitle: "Headcount, tenure, leave, and labor-cost overview" },
   { key: "attendance", label: "Attendance", icon: "clock-outline", title: "Attendance", subtitle: "Today's time in & out across all branches" },
   { key: "dtr", label: "DTR", icon: "file-document-outline", title: "Daily Time Record", subtitle: "Generate and export a monthly DTR" },
   { key: "schedules", label: "Schedules", icon: "calendar-month-outline", title: "Schedules", subtitle: "Set each employee's weekly shifts and date overrides" },
@@ -49,7 +51,7 @@ const TABS: { key: TabKey; label: string; icon: MdIcon; title: string; subtitle:
 // Sidebar sections — group the 11 tabs so the nav reads as a hierarchy, not a
 // flat list. (Mobile keeps a single horizontal scroll.)
 const NAV_GROUPS: { label: string; keys: TabKey[] }[] = [
-  { label: "", keys: ["dashboard"] },
+  { label: "", keys: ["dashboard", "analytics"] },
   { label: "Time & Attendance", keys: ["attendance", "dtr", "schedules"] },
   { label: "Payroll & Compensation", keys: ["payroll", "finalpay"] },
   { label: "People", keys: ["employees", "org", "documents"] },
@@ -136,6 +138,7 @@ export default function ManagerPortal() {
       {tab === "dashboard" && (
         <DashboardTab managerName={employee.fullName} pendingCount={pendingCount} alarmCount={alarmCount} allowed={allowed} />
       )}
+      {tab === "analytics" && <WorkforceTab allowed={allowed} />}
       {tab === "approvals" && <ApprovalsTab reviewerName={employee.fullName} />}
       {tab === "attendance" && <AttendanceTab allowed={allowed} />}
       {tab === "schedules" && <SchedulesTab managerName={employee.fullName} allowed={allowed} />}
