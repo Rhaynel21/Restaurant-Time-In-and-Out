@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { Redirect, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
-import { Image, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 
 import { ApprovalsTab } from "@/components/manager/ApprovalsTab";
 import { AttendanceTab } from "@/components/manager/AttendanceTab";
@@ -137,8 +137,8 @@ export default function ManagerPortal() {
       {tab === "employees" && <EmployeesTab managerName={employee.fullName} scope={scope} />}
       {tab === "memo" && <MemoTab managerName={employee.fullName} allowed={allowed} />}
       {tab === "org" && <OrgTab />}
-      {tab === "payroll" && <PayrollTab allowed={allowed} />}
-      {tab === "finalpay" && <FinalPayTab allowed={allowed} />}
+      {tab === "payroll" && <PayrollTab allowed={allowed} companyId={scope.companyId} />}
+      {tab === "finalpay" && <FinalPayTab allowed={allowed} companyId={scope.companyId} />}
       {tab === "documents" && <DocumentsTab managerName={employee.fullName} allowed={allowed} />}
       {tab === "dtr" && <DtrTab allowed={allowed} />}
       {tab === "devices" && <DevicesTab />}
@@ -201,25 +201,13 @@ export default function ManagerPortal() {
           end={{ x: 1, y: 1 }}
           style={styles.sidebar}
         >
-          <View style={styles.brand}>
-            <Image
-              source={require("../../assets/images/qui-logo-light.png")}
-              style={styles.brandLogo}
-              resizeMode="contain"
-            />
-          </View>
-
-          <View style={styles.orgBlock}>
-            <View style={styles.orgHead}>
-              <View style={styles.orgAvatar}>
-                <Text style={styles.orgAvatarText}>{companyInitial}</Text>
-              </View>
-              <View style={styles.grow}>
-                <Text style={styles.orgName} numberOfLines={2}>{companyName}</Text>
-                <View style={styles.roleBadge}>
-                  <Text style={styles.roleBadgeText}>{employee.accessRole}</Text>
-                </View>
-              </View>
+          <View style={styles.orgCard}>
+            <View style={styles.orgAvatar}>
+              <Text style={styles.orgAvatarText}>{companyInitial}</Text>
+            </View>
+            <Text style={styles.orgName} numberOfLines={3}>{companyName}</Text>
+            <View style={styles.roleBadge}>
+              <Text style={styles.roleBadgeText}>{employee.accessRole}</Text>
             </View>
 
             {visibleBrands.length > 0 && (
@@ -288,11 +276,8 @@ export default function ManagerPortal() {
     <View style={styles.screen}>
       <View style={styles.mobileBar}>
         <View style={styles.mobileBrand}>
-          <Image
-            source={require("../../assets/images/qui-logo-light.png")}
-            style={styles.mobileLogo}
-            resizeMode="contain"
-          />
+          <Text style={styles.mobileTitle}>{companyName}</Text>
+          <Text style={styles.mobileRole}>{employee.accessRole}</Text>
         </View>
         <Pressable style={styles.logout} onPress={logout}>
           <Text style={styles.logoutText}>Log out</Text>
@@ -332,7 +317,7 @@ function SidebarSelect({
   onSelect: (id: string | null) => void;
 }) {
   return (
-    <View style={styles.selWrap}>
+    <View style={[styles.selWrap, open && styles.selWrapOpen]}>
       <Pressable style={styles.selBtn} onPress={onToggle}>
         <Text style={styles.selValue} numberOfLines={1}>{label}</Text>
         <MaterialCommunityIcons name={open ? "chevron-up" : "chevron-down"} size={18} color="rgba(247,245,240,0.7)" />
@@ -354,18 +339,48 @@ function SidebarSelect({
 }
 
 const styles = StyleSheet.create({
-  orgBlock: { paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "rgba(247,245,240,0.1)", zIndex: 20 },
-  orgHead: { flexDirection: "row", alignItems: "center", gap: 11, marginBottom: 10 },
-  orgAvatar: { width: 40, height: 40, borderRadius: 11, backgroundColor: "rgba(247,245,240,0.16)", alignItems: "center", justifyContent: "center" },
-  orgAvatarText: { color: Colors.textOnDark, fontWeight: "800", fontSize: 16 },
-  orgName: { color: Colors.textOnDark, fontWeight: "800", fontSize: 14, letterSpacing: -0.2 },
-  roleBadge: { alignSelf: "flex-start", marginTop: 4, backgroundColor: "rgba(247,245,240,0.16)", borderRadius: 999, paddingHorizontal: 9, paddingVertical: 2 },
-  roleBadgeText: { color: Colors.textOnDark, fontSize: 10, fontWeight: "700", textTransform: "capitalize", letterSpacing: 0.3 },
-  selLabel: { color: "rgba(247,245,240,0.5)", fontSize: 10, fontWeight: "800", letterSpacing: 1, textTransform: "uppercase", marginTop: 8, marginBottom: 5, marginLeft: 2 },
+  orgCard: {
+    marginHorizontal: 14,
+    marginTop: 18,
+    marginBottom: 6,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(247,245,240,0.18)",
+    backgroundColor: "rgba(247,245,240,0.06)",
+    zIndex: 20,
+  },
+  orgAvatar: { width: 56, height: 56, borderRadius: 15, backgroundColor: "rgba(247,245,240,0.16)", alignItems: "center", justifyContent: "center", alignSelf: "center" },
+  orgAvatarText: { color: Colors.textOnDark, fontWeight: "800", fontSize: 22 },
+  orgName: { color: Colors.textOnDark, fontWeight: "800", fontSize: 17, letterSpacing: -0.3, textAlign: "center", marginTop: 10, lineHeight: 21 },
+  roleBadge: { alignSelf: "center", marginTop: 8, marginBottom: 2, backgroundColor: "rgba(247,245,240,0.16)", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 3 },
+  roleBadgeText: { color: Colors.textOnDark, fontSize: 11, fontWeight: "700", textTransform: "capitalize", letterSpacing: 0.3 },
+  selLabel: { color: "rgba(247,245,240,0.55)", fontSize: 10, fontWeight: "800", letterSpacing: 1, textTransform: "uppercase", marginTop: 12, marginBottom: 5, marginLeft: 2 },
   selWrap: { position: "relative" },
+  // Lift the open selector (and its absolute menu) above the branch picker + nav.
+  selWrapOpen: { zIndex: 200 },
   selBtn: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, backgroundColor: "rgba(247,245,240,0.1)", borderWidth: 1, borderColor: "rgba(247,245,240,0.18)", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 },
   selValue: { color: Colors.textOnDark, fontWeight: "700", fontSize: 13, flex: 1 },
-  selMenu: { marginTop: 4, backgroundColor: "rgba(20,26,14,0.55)", borderRadius: 10, borderWidth: 1, borderColor: "rgba(247,245,240,0.16)", paddingVertical: 4 },
+  // Absolute overlay so opening the dropdown floats over the nav instead of
+  // pushing it down. Opaque so nav text doesn't bleed through.
+  selMenu: {
+    position: "absolute",
+    top: 46,
+    left: 0,
+    right: 0,
+    backgroundColor: "#28331C",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(247,245,240,0.18)",
+    paddingVertical: 4,
+    zIndex: 200,
+    maxHeight: 260,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.35,
+    shadowRadius: 20,
+    elevation: 16,
+  },
   selItem: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, paddingHorizontal: 12, paddingVertical: 9 },
   selItemText: { color: "rgba(247,245,240,0.82)", fontSize: 13, fontWeight: "600", flex: 1 },
   selItemTextOn: { color: Colors.textOnDark, fontWeight: "800" },
@@ -502,6 +517,8 @@ const styles = StyleSheet.create({
   },
   mobileBrand: {},
   mobileLogo: { width: 92, height: 85 },
+  mobileTitle: { color: Colors.textOnDark, fontWeight: "800", fontSize: 18, letterSpacing: -0.2 },
+  mobileRole: { color: "rgba(247,245,240,0.6)", fontSize: 11, fontWeight: "700", textTransform: "capitalize", marginTop: 1 },
   mobileSub: { fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: "rgba(247,245,240,0.5)", marginTop: 2 },
   mobileNavWrap: { backgroundColor: Colors.darkSurface, borderTopWidth: 1, borderTopColor: "rgba(247,245,240,0.08)" },
   mobileNav: { flexDirection: "row", gap: 4, paddingHorizontal: 10, paddingBottom: 12 },

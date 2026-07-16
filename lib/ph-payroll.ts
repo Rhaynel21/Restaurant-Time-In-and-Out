@@ -10,14 +10,23 @@ import { Dtr } from "@/lib/dtr";
 
 export const PH_RATES_VERSION = "2025";
 
-// Standard hours in a paid working day (DOLE) — used to derive the hourly rate.
-const HOURS_PER_DAY = 8;
+// DOLE pay formula — the configurable premium knobs. Defaults follow the Labor
+// Code minimums; a company may pay more, editable via Payroll Settings.
+export type PayFormula = {
+  hoursPerDay: number; // hours in a paid day (derives the hourly rate)
+  otPremium: number; // overtime premium fraction (0.25 → 125%)
+  nightDiff: number; // night differential fraction (0.10 → +10%)
+  regHolidayPremium: number; // regular holiday premium fraction (1.0 → 200% worked)
+  specialHolidayPremium: number; // special day premium fraction (0.30 → 130% worked)
+};
 
-// DOLE premium multipliers (as a fraction ON TOP of the base hour/day).
-const OT_PREMIUM = 0.25; // ordinary-day overtime: +25% of hourly
-const NIGHT_DIFF = 0.10; // night differential (22:00–06:00): +10% of hourly
-const REG_HOLIDAY_PREMIUM = 1.0; // regular holiday: +100% (200% when worked)
-const SPECIAL_HOLIDAY_PREMIUM = 0.3; // special non-working day worked: +30%
+export const DEFAULT_FORMULA: PayFormula = {
+  hoursPerDay: 8,
+  otPremium: 0.25,
+  nightDiff: 0.1,
+  regHolidayPremium: 1.0,
+  specialHolidayPremium: 0.3,
+};
 
 function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
@@ -120,11 +129,16 @@ export type Payslip = {
 // Compute a full monthly payslip from a DTR, the employee's daily rate, and any
 // allowances / recurring deductions. Premiums come from the DTR's DOLE minute
 // tallies; statutory deductions and tax are layered on to arrive at net pay.
-export function computePayslip(dtr: Dtr, pay: PayBasis, inputs: PayInputs = {}): Payslip {
+export function computePayslip(
+  dtr: Dtr,
+  pay: PayBasis,
+  inputs: PayInputs = {},
+  formula: PayFormula = DEFAULT_FORMULA,
+): Payslip {
   const { summary, rows } = dtr;
-  // Derive both rates from the 8-hour day so premiums work for either basis.
-  const hourlyRate = pay.type === "hourly" ? round2(pay.hourlyRate) : round2(pay.dailyRate / HOURS_PER_DAY);
-  const dailyRate = pay.type === "daily" ? round2(pay.dailyRate) : round2(pay.hourlyRate * HOURS_PER_DAY);
+  // Derive both rates from the configured paid-day length so premiums work either way.
+  const hourlyRate = pay.type === "hourly" ? round2(pay.hourlyRate) : round2(pay.dailyRate / formula.hoursPerDay);
+  const dailyRate = pay.type === "daily" ? round2(pay.dailyRate) : round2(pay.hourlyRate * formula.hoursPerDay);
 
   // Daily-paid: rate × days present. Hourly-paid: rate × regular hours (worked
   // hours net of overtime, which is paid separately at a premium below).
@@ -133,9 +147,9 @@ export function computePayslip(dtr: Dtr, pay: PayBasis, inputs: PayInputs = {}):
     pay.type === "hourly" ? round2(regularHours * hourlyRate) : round2(dailyRate * summary.present);
   const otHours = round2(summary.otMinutes / 60);
   // Overtime hours are beyond basic pay, so they're paid at the full 125%.
-  const otPay = round2(otHours * hourlyRate * (1 + OT_PREMIUM));
+  const otPay = round2(otHours * hourlyRate * (1 + formula.otPremium));
   const nightHours = round2(summary.nightMinutes / 60);
-  const nightPay = round2(nightHours * hourlyRate * NIGHT_DIFF);
+  const nightPay = round2(nightHours * hourlyRate * formula.nightDiff);
 
   // Holiday pay from the DTR rows (basicPay already pays 100% for a WORKED day):
   //   • Regular holiday worked   → +100% premium (200% total)
@@ -147,9 +161,9 @@ export function computePayslip(dtr: Dtr, pay: PayBasis, inputs: PayInputs = {}):
     if (!r.holiday) continue;
     const worked = r.status === "present";
     if (r.holiday.type === "regular") {
-      regHolidayPay += dailyRate * REG_HOLIDAY_PREMIUM; // premium (worked) or mandated pay (unworked)
+      regHolidayPay += dailyRate * formula.regHolidayPremium; // premium (worked) or mandated pay (unworked)
     } else if (worked) {
-      specialHolidayPay += dailyRate * SPECIAL_HOLIDAY_PREMIUM;
+      specialHolidayPay += dailyRate * formula.specialHolidayPremium;
     }
   }
   regHolidayPay = round2(regHolidayPay);

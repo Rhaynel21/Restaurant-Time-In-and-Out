@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import React from "react";
-import { StyleSheet, Text, View, ViewStyle } from "react-native";
+import React, { useState } from "react";
+import { Pressable, ScrollView, StyleSheet, Text, View, ViewStyle } from "react-native";
 
 import { ManagerColors as Colors } from "@/constants/theme";
 
@@ -27,6 +27,59 @@ export function Badge({
     </View>
   );
 }
+
+// Reusable dropdown select (opens as an absolute overlay, so it never pushes
+// the layout). Use for month / year / any short option list.
+export function Select({
+  value,
+  options,
+  onChange,
+  width,
+  placeholder = "Select",
+}: {
+  value: string | null;
+  options: { value: string; label: string }[];
+  onChange: (value: string) => void;
+  width?: number;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const current = options.find((o) => o.value === value);
+  return (
+    <View style={[styles.selectWrap, width ? { width } : { alignSelf: "flex-start", minWidth: 150 }, open && styles.selectWrapOpen]}>
+      <Pressable style={styles.selectBtn} onPress={() => setOpen((o) => !o)}>
+        <Text style={styles.selectValue} numberOfLines={1}>{current?.label ?? placeholder}</Text>
+        <MaterialCommunityIcons name={open ? "chevron-up" : "chevron-down"} size={18} color={Colors.textMuted} />
+      </Pressable>
+      {open && (
+        <>
+          <Pressable style={fixedFill} onPress={() => setOpen(false)} />
+          <View style={styles.selectMenu}>
+            <ScrollView style={styles.selectScroll} showsVerticalScrollIndicator={false}>
+              {options.map((o) => (
+                <Pressable
+                  key={o.value}
+                  style={styles.selectItem}
+                  onPress={() => {
+                    onChange(o.value);
+                    setOpen(false);
+                  }}
+                >
+                  <Text style={[styles.selectItemText, o.value === value && styles.selectItemTextOn]} numberOfLines={1}>
+                    {o.label}
+                  </Text>
+                  {o.value === value && <MaterialCommunityIcons name="check" size={16} color={Colors.primary} />}
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        </>
+      )}
+    </View>
+  );
+}
+
+const fixedFill = { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 40 } as unknown as ViewStyle;
 
 export function EmptyState({ icon, text }: { icon: MdIcon; text: string }) {
   return (
@@ -106,4 +159,13 @@ const styles = StyleSheet.create({
     color: Colors.textFaint,
     fontWeight: "500",
   },
+  selectWrap: { position: "relative" },
+  selectWrapOpen: { zIndex: 50 },
+  selectBtn: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, height: 46, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.warmBorder, backgroundColor: Colors.warmSurface },
+  selectValue: { fontSize: 15, color: Colors.textPrimary, fontWeight: "600", flex: 1 },
+  selectMenu: { position: "absolute", top: 50, left: 0, right: 0, backgroundColor: Colors.cardSurface, borderRadius: 12, borderWidth: 1, borderColor: Colors.hairline, paddingVertical: 4, zIndex: 50, shadowColor: "#000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.12, shadowRadius: 20, elevation: 8 },
+  selectScroll: { maxHeight: 240 },
+  selectItem: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, paddingHorizontal: 12, paddingVertical: 9 },
+  selectItemText: { fontSize: 14, color: Colors.textBody, fontWeight: "600", flex: 1 },
+  selectItemTextOn: { color: Colors.primary, fontWeight: "800" },
 });

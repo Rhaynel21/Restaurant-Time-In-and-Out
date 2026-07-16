@@ -1,8 +1,8 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { Card, EmptyState, SectionTitle } from "@/components/manager/ui";
+import { Card, EmptyState, SectionTitle, Select } from "@/components/manager/ui";
 import { ManagerColors as Colors } from "@/constants/theme";
 import { getAttendanceForMonth } from "@/lib/attendance";
 import { buildDtr } from "@/lib/dtr";
@@ -10,7 +10,8 @@ import { EmployeeMaster, subscribeEmployeeMasters } from "@/lib/hr";
 import { SilBalance, silBalance } from "@/lib/leave-benefits";
 import { subscribeAllLeaves, LeaveRequest } from "@/lib/leaves";
 import { inScope } from "@/lib/org";
-import { PayBasis, PayInputs, PH_RATES_VERSION, computePayslip, peso } from "@/lib/ph-payroll";
+import { subscribePayrollFormula } from "@/lib/payroll-settings";
+import { DEFAULT_FORMULA, PayBasis, PayFormula, PayInputs, PH_RATES_VERSION, computePayslip, peso } from "@/lib/ph-payroll";
 import { getSchedule } from "@/lib/schedules";
 
 function round2(n: number): number {
@@ -60,7 +61,7 @@ type Result = {
   finalPay: number;
 };
 
-export function FinalPayTab({ allowed }: { allowed: Set<string> | null }) {
+export function FinalPayTab({ allowed, companyId }: { allowed: Set<string> | null; companyId: string | null }) {
   const [employees, setEmployees] = useState<EmployeeMaster[]>([]);
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
   const [selId, setSelId] = useState<string | null>(null);
@@ -69,14 +70,19 @@ export function FinalPayTab({ allowed }: { allowed: Set<string> | null }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const [formula, setFormula] = useState<PayFormula>(DEFAULT_FORMULA);
+
   useEffect(() => subscribeEmployeeMasters(setEmployees, () => setEmployees([])), []);
   useEffect(() => subscribeAllLeaves(setLeaves, () => setLeaves([])), []);
+  useEffect(() => subscribePayrollFormula(companyId, setFormula, () => {}), [companyId]);
 
   const scoped = useMemo(
     () => employees.filter((e) => inScope(e.branchId, allowed)).sort((a, b) => a.fullName.localeCompare(b.fullName)),
     [employees, allowed],
   );
   const selected = scoped.find((e) => e.employeeId === selId) ?? null;
+  const thisYear = new Date().getFullYear();
+  const yearOptions = Array.from({ length: 5 }, (_, i) => String(thisYear - 3 + i)).map((y) => ({ value: y, label: y }));
 
   const compute = async () => {
     setError("");
@@ -104,7 +110,7 @@ export function FinalPayTab({ allowed }: { allowed: Set<string> | null }) {
           getAttendanceForMonth(selected.employeeId, year, m),
         ]);
         if (records.length === 0) continue;
-        const slip = computePayslip(buildDtr(year, m, schedule, records), pay, inputs);
+        const slip = computePayslip(buildDtr(year, m, schedule, records), pay, inputs, formula);
         if (slip.grossPay <= 0) continue;
         a.months += 1;
         a.gross += slip.grossPay;
@@ -172,7 +178,15 @@ export function FinalPayTab({ allowed }: { allowed: Set<string> | null }) {
         <View style={styles.controls}>
           <View>
             <Text style={styles.label}>Year</Text>
-            <TextInput style={styles.yearInput} value={yearText} onChangeText={setYearText} placeholder="2026" keyboardType="numeric" placeholderTextColor={Colors.textPlaceholder} />
+            <Select
+              value={yearText}
+              width={130}
+              options={yearOptions}
+              onChange={(v) => {
+                setYearText(v);
+                setResult(null);
+              }}
+            />
           </View>
           <Pressable style={styles.genBtn} disabled={loading} onPress={compute}>
             <Text style={styles.genText}>{loading ? "Computing…" : "Compute Final Pay"}</Text>

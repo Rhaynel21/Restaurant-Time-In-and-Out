@@ -2,13 +2,14 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { Card, EmptyState, SectionTitle } from "@/components/manager/ui";
+import { Card, EmptyState, SectionTitle, Select } from "@/components/manager/ui";
 import { ManagerColors as Colors } from "@/constants/theme";
 import { getAttendanceForMonth } from "@/lib/attendance";
 import { buildDtr } from "@/lib/dtr";
 import { EmployeeMaster, subscribeEmployeeMasters } from "@/lib/hr";
 import { inScope } from "@/lib/org";
-import { PH_RATES_VERSION, PayBasis, PayInputs, Payslip as PayslipData, computePayslip, peso } from "@/lib/ph-payroll";
+import { savePayrollFormula, subscribePayrollFormula } from "@/lib/payroll-settings";
+import { DEFAULT_FORMULA, PH_RATES_VERSION, PayBasis, PayFormula, PayInputs, Payslip as PayslipData, computePayslip, peso } from "@/lib/ph-payroll";
 import { getSchedule } from "@/lib/schedules";
 
 type PayRow = {
@@ -28,7 +29,12 @@ function currentMonthValue() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-export function PayrollTab({ allowed }: { allowed: Set<string> | null }) {
+const MONTHS = [
+  ["01", "January"], ["02", "February"], ["03", "March"], ["04", "April"], ["05", "May"], ["06", "June"],
+  ["07", "July"], ["08", "August"], ["09", "September"], ["10", "October"], ["11", "November"], ["12", "December"],
+].map(([value, label]) => ({ value, label }));
+
+export function PayrollTab({ allowed, companyId }: { allowed: Set<string> | null; companyId: string | null }) {
   const [employees, setEmployees] = useState<EmployeeMaster[]>([]);
   const [month, setMonth] = useState(currentMonthValue());
   const [rows, setRows] = useState<PayRow[] | null>(null);
@@ -36,8 +42,21 @@ export function PayrollTab({ allowed }: { allowed: Set<string> | null }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
+  const [showFormulas, setShowFormulas] = useState(false);
+  const [formula, setFormula] = useState<PayFormula>(DEFAULT_FORMULA);
+  const [draft, setDraft] = useState<PayFormula>(DEFAULT_FORMULA);
+  const [savingFormula, setSavingFormula] = useState(false);
+  const [formulaMsg, setFormulaMsg] = useState("");
 
   useEffect(() => subscribeEmployeeMasters(setEmployees, () => setEmployees([])), []);
+  useEffect(
+    () => subscribePayrollFormula(companyId, (f) => { setFormula(f); setDraft(f); }, () => {}),
+    [companyId],
+  );
+
+  const [yy, mm] = month.split("-");
+  const thisYear = new Date().getFullYear();
+  const yearOptions = Array.from({ length: 5 }, (_, i) => String(thisYear - 3 + i)).map((y) => ({ value: y, label: y }));
 
   const compute = async () => {
     setError("");
@@ -76,7 +95,7 @@ export function PayrollTab({ allowed }: { allowed: Set<string> | null }) {
               { label: "Cash Advance", amount: e.cashAdvance },
             ],
           };
-          const slip = computePayslip(dtr, pay, inputs);
+          const slip = computePayslip(dtr, pay, inputs, formula);
           return {
             id: e.employeeId,
             name: e.fullName,
@@ -97,6 +116,20 @@ export function PayrollTab({ allowed }: { allowed: Set<string> | null }) {
       setError("Failed to compute: " + (e instanceof Error ? e.message : "unknown error"));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const saveFormula = async () => {
+    if (!companyId) return;
+    setSavingFormula(true);
+    setFormulaMsg("");
+    try {
+      await savePayrollFormula(companyId, draft);
+      setFormulaMsg("✓ Formula saved");
+    } catch (e) {
+      setFormulaMsg("Save failed: " + (e instanceof Error ? e.message : "error"));
+    } finally {
+      setSavingFormula(false);
     }
   };
 
@@ -190,13 +223,11 @@ export function PayrollTab({ allowed }: { allowed: Set<string> | null }) {
         <View style={styles.controls}>
           <View>
             <Text style={styles.label}>Month</Text>
-            <TextInput
-              style={styles.monthInput}
-              value={month}
-              onChangeText={setMonth}
-              placeholder="YYYY-MM"
-              placeholderTextColor={Colors.textPlaceholder}
-            />
+            <Select value={mm} width={150} options={MONTHS} onChange={(v) => setMonth(`${yy}-${v}`)} />
+          </View>
+          <View>
+            <Text style={styles.label}>Year</Text>
+            <Select value={yy} width={110} options={yearOptions} onChange={(v) => setMonth(`${v}-${mm}`)} />
           </View>
           <Pressable style={styles.genBtn} disabled={loading} onPress={compute}>
             <Text style={styles.genText}>{loading ? "Computing…" : "Compute Payroll"}</Text>
@@ -231,6 +262,45 @@ export function PayrollTab({ allowed }: { allowed: Set<string> | null }) {
         </View>
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </Card>
+
+      <Pressable style={styles.formulaToggle} onPress={() => setShowFormulas((f) => !f)}>
+        <MaterialCommunityIcons name="function-variant" size={16} color={Colors.primary} />
+        <Text style={styles.formulaToggleText}>Pay computation formula — view &amp; edit</Text>
+        <MaterialCommunityIcons name={showFormulas ? "chevron-up" : "chevron-down"} size={18} color={Colors.textMuted} />
+      </Pressable>
+      {showFormulas && (
+        <Card>
+          <Text style={styles.formulaHead}>Editable DOLE pay premiums</Text>
+          <View style={styles.formulaGrid}>
+            <FormulaField label="Hours / day" value={draft.hoursPerDay} suffix="hrs" onChange={(n) => setDraft({ ...draft, hoursPerDay: n })} />
+            <FormulaField label="Overtime premium" value={pct(draft.otPremium)} suffix="%" hint={`= pay ${100 + pct(draft.otPremium)}%`} onChange={(n) => setDraft({ ...draft, otPremium: n / 100 })} />
+            <FormulaField label="Night differential" value={pct(draft.nightDiff)} suffix="%" onChange={(n) => setDraft({ ...draft, nightDiff: n / 100 })} />
+            <FormulaField label="Regular holiday premium" value={pct(draft.regHolidayPremium)} suffix="%" hint={`= pay ${100 + pct(draft.regHolidayPremium)}% worked`} onChange={(n) => setDraft({ ...draft, regHolidayPremium: n / 100 })} />
+            <FormulaField label="Special holiday premium" value={pct(draft.specialHolidayPremium)} suffix="%" hint={`= pay ${100 + pct(draft.specialHolidayPremium)}% worked`} onChange={(n) => setDraft({ ...draft, specialHolidayPremium: n / 100 })} />
+          </View>
+          <View style={styles.formulaActions}>
+            {formulaMsg ? <Text style={styles.formulaMsg}>{formulaMsg}</Text> : <View style={{ flex: 1 }} />}
+            <Pressable style={styles.resetBtn} onPress={() => setDraft(DEFAULT_FORMULA)}>
+              <Text style={styles.resetText}>Reset to Labor Code</Text>
+            </Pressable>
+            <Pressable style={[styles.saveFormulaBtn, (!companyId || savingFormula) && styles.ghostDisabled]} disabled={!companyId || savingFormula} onPress={saveFormula}>
+              <Text style={styles.saveFormulaText}>{savingFormula ? "Saving…" : "Save formula"}</Text>
+            </Pressable>
+          </View>
+          {!companyId && <Text style={styles.formulaNote}>Pick a specific company (org scope) to save custom rates.</Text>}
+
+          <Text style={[styles.formulaHead, { marginTop: 18 }]}>Formulas used</Text>
+          <FormulaRef label="Basic pay" f="daily rate × days present  ·  or  hourly rate × regular hours" />
+          <FormulaRef label="Overtime" f={`OT hours × hourly rate × ${100 + pct(draft.otPremium)}%`} />
+          <FormulaRef label="Night differential" f={`night hours × hourly rate × ${pct(draft.nightDiff)}%  (10 PM – 6 AM)`} />
+          <FormulaRef label="Regular / special holiday" f={`+${pct(draft.regHolidayPremium)}% / +${pct(draft.specialHolidayPremium)}% of daily rate`} />
+          <FormulaRef label="SSS (EE)" f="5% of Monthly Salary Credit — fixed by law" />
+          <FormulaRef label="PhilHealth (EE)" f="2.5% of basic salary (₱10k–₱100k) — fixed by law" />
+          <FormulaRef label="Pag-IBIG (EE)" f="2% of pay, max ₱200 — fixed by law" />
+          <FormulaRef label="Withholding tax" f="BIR TRAIN monthly table on taxable income — fixed by law" />
+          <FormulaRef label="Net pay" f="gross − SSS/PhilHealth/Pag-IBIG − tax − loans/advances" />
+        </Card>
+      )}
 
       {rows && (
         <>
@@ -368,7 +438,59 @@ function SummaryTile({ label, value, tone }: { label: string; value: string; ton
   );
 }
 
+const pct = (f: number) => Math.round(f * 100);
+
+function FormulaField({ label, value, suffix, hint, onChange }: { label: string; value: number; suffix?: string; hint?: string; onChange: (n: number) => void }) {
+  return (
+    <View style={styles.ff}>
+      <Text style={styles.ffLabel}>{label}</Text>
+      <View style={styles.ffInputRow}>
+        <TextInput
+          style={styles.ffInput}
+          value={String(value)}
+          keyboardType="numeric"
+          onChangeText={(t) => {
+            const n = parseFloat(t.replace(/[^0-9.]/g, ""));
+            onChange(Number.isFinite(n) ? n : 0);
+          }}
+        />
+        {suffix ? <Text style={styles.ffSuffix}>{suffix}</Text> : null}
+      </View>
+      {hint ? <Text style={styles.ffHint}>{hint}</Text> : null}
+    </View>
+  );
+}
+
+function FormulaRef({ label, f }: { label: string; f: string }) {
+  return (
+    <View style={styles.formulaRefRow}>
+      <Text style={styles.formulaRefLabel}>{label}</Text>
+      <Text style={styles.formulaRefText}>{f}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  formulaToggle: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 12, paddingHorizontal: 4 },
+  formulaToggleText: { flex: 1, fontSize: 13, fontWeight: "800", color: Colors.textBody },
+  formulaHead: { fontSize: 12, fontWeight: "800", color: Colors.textSubtle, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10 },
+  formulaGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
+  ff: { flexGrow: 1, flexBasis: 150 },
+  ffLabel: { fontSize: 12, fontWeight: "700", color: Colors.textBody, marginBottom: 6 },
+  ffInputRow: { flexDirection: "row", alignItems: "center", gap: 6, height: 44, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, borderColor: Colors.warmBorder, backgroundColor: Colors.warmSurface },
+  ffInput: { flex: 1, fontSize: 15, color: Colors.textPrimary, fontWeight: "700", outlineStyle: "none" } as object,
+  ffSuffix: { fontSize: 13, color: Colors.textFaint, fontWeight: "700" },
+  ffHint: { fontSize: 11, color: Colors.textFaint, marginTop: 4 },
+  formulaActions: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 16, flexWrap: "wrap" },
+  formulaMsg: { flex: 1, fontSize: 13, fontWeight: "700", color: Colors.success },
+  resetBtn: { height: 42, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, borderColor: Colors.warmBorder, backgroundColor: Colors.cardSurface, alignItems: "center", justifyContent: "center" },
+  resetText: { fontSize: 13, fontWeight: "700", color: Colors.textMuted },
+  saveFormulaBtn: { height: 42, paddingHorizontal: 20, borderRadius: 10, backgroundColor: Colors.primary, alignItems: "center", justifyContent: "center" },
+  saveFormulaText: { color: "#fff", fontWeight: "800", fontSize: 13 },
+  formulaNote: { fontSize: 11, color: Colors.textMuted, marginTop: 10, fontStyle: "italic" },
+  formulaRefRow: { paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: Colors.hairline },
+  formulaRefLabel: { fontSize: 13, fontWeight: "700", color: Colors.textPrimary },
+  formulaRefText: { fontSize: 12.5, color: Colors.textMuted, marginTop: 2 },
   label: { fontSize: 12, fontWeight: "700", color: Colors.textBody, marginBottom: 8 },
   controls: { flexDirection: "row", alignItems: "flex-end", gap: 12, flexWrap: "wrap" },
   monthInput: { width: 160, height: 46, borderRadius: 12, borderWidth: 1, borderColor: Colors.warmBorder, backgroundColor: Colors.warmSurface, paddingHorizontal: 12, fontSize: 15, color: Colors.textPrimary } as object,
