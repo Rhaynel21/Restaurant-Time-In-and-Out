@@ -26,6 +26,7 @@ export type EmployeeMaster = {
   companyId: string | null;
   brandId: string | null;
   branchId: string | null;
+  branchIds: string[]; // area managers cover several branches
   branchName: string | null;
   accessRole: AccessRole;
   hireDate: string | null; // YYYY-MM-DD
@@ -88,6 +89,7 @@ function toMaster(id: string, data: Record<string, unknown>): EmployeeMaster {
     companyId: typeof data.companyId === "string" ? data.companyId : null,
     brandId: typeof data.brandId === "string" ? data.brandId : null,
     branchId: typeof data.branchId === "string" ? data.branchId : null,
+    branchIds: Array.isArray(data.branchIds) ? data.branchIds.filter((x): x is string => typeof x === "string") : [],
     branchName: typeof data.branchName === "string" ? data.branchName : null,
     accessRole: str(data.accessRole, "staff") as AccessRole,
     hireDate: typeof data.hireDate === "string" ? data.hireDate : null,
@@ -132,6 +134,7 @@ export function blankEmployee(): EmployeeMaster {
     companyId: null,
     brandId: null,
     branchId: null,
+    branchIds: [],
     branchName: null,
     accessRole: "staff",
     hireDate: null,
@@ -211,6 +214,7 @@ export async function saveEmployeeMaster(rec: EmployeeMaster, updatedBy: string)
       companyId: rec.companyId,
       brandId: rec.brandId,
       branchId: rec.branchId,
+      branchIds: rec.branchIds,
       branchName: rec.branchName,
       accessRole: rec.accessRole,
       hireDate: rec.hireDate,

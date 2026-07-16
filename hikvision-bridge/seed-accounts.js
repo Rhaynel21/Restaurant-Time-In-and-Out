@@ -33,6 +33,9 @@ const ACCOUNTS = [
   // ── HR (company-wide people + payroll, not org/system settings) ──
   { employeeId: "HR-001",    fullName: "Hazel Ramos",     email: "hr@qui.local",       phone: "+63 917 000 0011", role: "HR Officer",     accessRole: "hr",      branchId: "kio-bgc",    branchName: "Qui - BGC",         password: "hr123456" },
 
+  // ── Area manager (several branches — a region) ──
+  { employeeId: "AREA-001",  fullName: "Diego Ramos",     email: "area@qui.local",     phone: "+63 917 000 0012", role: "Area Manager",   accessRole: "areaManager", branchId: "kio-bgc", branchName: "Qui - BGC", branchIds: ["kio-bgc", "kio-makati"], password: "area12345" },
+
   // ── Managers (one per branch) ──
   { employeeId: "MGR-001",   fullName: "Maria Santos",    email: "manager@qui.local",  phone: "+63 917 000 0002", role: "Branch Manager", accessRole: "manager", branchId: "kio-bgc",    branchName: "Qui - BGC",         password: "manager123" },
   { employeeId: "MGR-002",   fullName: "Carlo Mendoza",   email: "carlo@qui.local",    phone: "+63 917 000 0005", role: "Branch Manager", accessRole: "manager", branchId: "kio-makati", branchName: "Qui - Makati",      password: "manager123" },
@@ -88,6 +91,7 @@ async function ensureAuthUser(acc) {
         companyId: "qui",
         brandId: "qui",
         branchId: acc.branchId,
+        branchIds: acc.branchIds || [],
         branchName: acc.branchName,
         status: "active",
         // Remove legacy Firestore-credential fields if present.

@@ -5,12 +5,14 @@ rules_version = '2';
 //
 // Roles (from the Firebase Auth token custom claims — set by
 // `hikvision-bridge/set-claims.js`):
-//   owner   → everything, all companies
-//   admin   → their whole company: HR + org structure + system settings
-//   hr      → their whole company: people + payroll + leave/OT, but NOT org
-//             structure / devices
-//   manager → their branch: approve leave/OT for their branch, view
-//   staff    → only their own record / DTR / payslip
+//   owner       → everything, all companies
+//   admin       → their whole company: HR + org structure + system settings
+//   hr          → their whole company: people + payroll + leave/OT, but NOT org
+//                 structure / devices
+//   areaManager → several branches (an area): same as a branch manager but over
+//                 every branch in their `branchIds` claim. NOT payroll/201 docs.
+//   manager     → their branch: approve leave/OT for their branch, view
+//   staff       → only their own record / DTR / payslip
 //
 // ── DEPLOY ORDER (important) ──────────────────────────────────────────────
 //   1. cd hikvision-bridge && npm run seed:claims   (sets the token claims)
@@ -35,11 +37,17 @@ service cloud.firestore {
     function isOwner()   { return role() == 'owner'; }
     function isAdmin()   { return role() in ['owner', 'admin']; }
     function isHR()      { return role() in ['owner', 'admin', 'hr']; }
-    function isManager() { return role() in ['owner', 'admin', 'hr', 'manager']; }
-    function myEmp()     { return claim('employeeId'); }
-    function myBranch()  { return claim('branchId'); }
-    // A manager may act on a doc only within their own branch; HR+ anywhere.
-    function inMyBranch(branchId) { return isHR() || (role() == 'manager' && branchId == myBranch()); }
+    function isManager() { return role() in ['owner', 'admin', 'hr', 'manager', 'areaManager']; }
+    function myEmp()      { return claim('employeeId'); }
+    function myBranch()   { return claim('branchId'); }
+    function myBranches() { return claim('branchIds'); } // list — area managers
+    // A branch manager may act only within their own branch; an area manager
+    // within any of their assigned branches; HR+ anywhere.
+    function inMyBranch(branchId) {
+      return isHR()
+        || (role() == 'manager' && branchId == myBranch())
+        || (role() == 'areaManager' && myBranches() != null && (branchId in myBranches()));
+    }
 
     // ── Employees / 201 master ────────────────────────────────────────────
     // Read: managers+ (portal needs the roster); staff only their own doc.

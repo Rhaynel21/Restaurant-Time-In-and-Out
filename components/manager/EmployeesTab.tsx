@@ -10,7 +10,7 @@ import { LOAN_TYPES, Loan, loanBalanceAfter, loanTypeLabel } from "@/lib/loans";
 import { OrgTree, Scope, subscribeOrgTree } from "@/lib/org";
 import { peso } from "@/lib/ph-payroll";
 
-const ACCESS_ROLES: AccessRole[] = ["owner", "admin", "hr", "manager", "staff"];
+const ACCESS_ROLES: AccessRole[] = ["owner", "admin", "hr", "areaManager", "manager", "staff"];
 
 function thisMonthValue() {
   const d = new Date();
@@ -299,6 +299,38 @@ export function EmployeesTab({ managerName, scope }: { managerName: string; scop
                     </Pressable>
                   ))}
                 </View>
+              )}
+            </Field>
+          )}
+
+          {e.accessRole === "areaManager" && (
+            <Field label="Branches (area — pick several)">
+              {org.branches.length === 0 ? (
+                <Text style={styles.scopeNote}>No branches yet — set up the Org tab first.</Text>
+              ) : (
+                <>
+                  <View style={styles.chips}>
+                    {org.branches.map((b) => {
+                      const on = (e.branchIds ?? []).includes(b.id);
+                      return (
+                        <Pressable
+                          key={b.id}
+                          style={[styles.chip, on && styles.chipOn]}
+                          onPress={() => {
+                            const cur = e.branchIds ?? [];
+                            const next = on ? cur.filter((x) => x !== b.id) : [...cur, b.id];
+                            patch({ branchIds: next, companyId: b.companyId });
+                          }}
+                        >
+                          <Text style={[styles.chipText, on && styles.chipTextOn]}>{b.name}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  <Text style={styles.scopeNote}>
+                    Area manager sees every branch selected above — the same tabs as a branch manager, across the whole area.
+                  </Text>
+                </>
               )}
             </Field>
           )}

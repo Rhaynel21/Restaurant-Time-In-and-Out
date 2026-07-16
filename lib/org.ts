@@ -129,27 +129,40 @@ export async function migrateQuiOrg(): Promise<{ created: number; skipped: boole
 }
 
 // ── Scope: what a signed-in user is allowed to see ──
-export type ScopeLevel = "owner" | "company" | "branch" | "none";
-export type Scope = { level: ScopeLevel; companyId: string | null; branchId: string | null };
+export type ScopeLevel = "owner" | "company" | "area" | "branch" | "none";
+export type Scope = { level: ScopeLevel; companyId: string | null; branchId: string | null; branchIds: string[] };
 
 export type ScopedProfile = {
   accessRole: AccessRole;
   companyId?: string | null;
   brandId?: string | null;
   branchId?: string | null;
+  branchIds?: string[] | null; // area managers cover several branches
 };
 
 // Map a user's role + assignment to a scope:
-//   owner   → everything
-//   admin   → their whole company (all brands + branches)
-//   manager → just their branch
-//   staff   → just their branch (mobile app)
+//   owner       → everything
+//   admin / hr  → their whole company (all brands + branches)
+//   areaManager → the several branches assigned to them (an area/region)
+//   manager     → just their branch
+//   staff       → just their branch (mobile app)
 export function resolveScope(me: ScopedProfile): Scope {
-  if (me.accessRole === "owner") return { level: "owner", companyId: null, branchId: null };
+  if (me.accessRole === "owner") return { level: "owner", companyId: null, branchId: null, branchIds: [] };
   // Admin and HR both see their whole company (all brands + branches).
   if (me.accessRole === "admin" || me.accessRole === "hr")
-    return { level: "company", companyId: me.companyId ?? null, branchId: null };
-  return { level: "branch", companyId: me.companyId ?? null, branchId: me.branchId ?? null };
+    return { level: "company", companyId: me.companyId ?? null, branchId: null, branchIds: [] };
+  // Area manager: several branches. Falls back to their single branchId if the
+  // branchIds list is empty (so a mis-provisioned area manager still sees one).
+  if (me.accessRole === "areaManager") {
+    const ids = (me.branchIds ?? []).filter(Boolean);
+    return {
+      level: "area",
+      companyId: me.companyId ?? null,
+      branchId: null,
+      branchIds: ids.length ? ids : me.branchId ? [me.branchId] : [],
+    };
+  }
+  return { level: "branch", companyId: me.companyId ?? null, branchId: me.branchId ?? null, branchIds: [] };
 }
 
 // The set of branch ids a scope may see, or null for "all branches" (owner).
@@ -158,6 +171,7 @@ export function allowedBranchIds(scope: Scope, branches: Branch[]): Set<string> 
   if (scope.level === "company") {
     return new Set(branches.filter((b) => b.companyId === scope.companyId).map((b) => b.id));
   }
+  if (scope.level === "area") return new Set(scope.branchIds);
   return new Set(scope.branchId ? [scope.branchId] : []);
 }
 

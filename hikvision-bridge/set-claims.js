@@ -33,10 +33,13 @@ const db = admin.firestore();
       continue;
     }
     const claims = {
-      role: ["owner", "admin", "hr", "manager", "staff"].includes(e.accessRole) ? e.accessRole : "staff",
+      role: ["owner", "admin", "hr", "areaManager", "manager", "staff"].includes(e.accessRole) ? e.accessRole : "staff",
       employeeId: d.id,
       companyId: e.companyId || null,
       branchId: e.branchId || null,
+      // Area managers cover several branches — carry the list so the rules'
+      // inMyBranch() can check membership.
+      branchIds: Array.isArray(e.branchIds) ? e.branchIds.filter((x) => typeof x === "string") : [],
     };
     try {
       await admin.auth().setCustomUserClaims(e.uid, claims);

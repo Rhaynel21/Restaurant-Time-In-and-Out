@@ -67,6 +67,30 @@ const NAV_GROUPS: { label: string; keys: TabKey[] }[] = [
   { label: "System", keys: ["devices", "audit"] },
 ];
 
+// ── Tab visibility per role ───────────────────────────────────────────────
+//   • Branch manager (`manager`) → ONE branch. Operations: time & attendance,
+//     schedules, their people, leave/OT approvals, recruitment & performance
+//     for their staff. NOT payroll, 201 documents, org, devices, or audit.
+//   • Area manager (`areaManager`) → SEVERAL branches (a region). Same tabs as a
+//     branch manager, just a wider scope. Payroll/201 docs stay with HR
+//     (segregation of duties: whoever approves OT must not also run payroll).
+//   • HR (`hr`) → everything a branch manager sees, PLUS payroll, final pay, and
+//     201 documents (company-wide). NOT org, devices, or audit.
+//   • Owner / Admin → everything, including org structure, devices, audit.
+const MANAGER_TABS: TabKey[] = [
+  "dashboard", "analytics", "attendance", "dtr", "schedules",
+  "employees", "memo", "approvals", "leaves", "requests",
+  "recruitment", "performance",
+];
+const HR_TABS: TabKey[] = [...MANAGER_TABS, "documents", "payroll", "finalpay"];
+const ADMIN_TABS: TabKey[] = [...HR_TABS, "org", "devices", "audit"];
+
+function tabsForRole(role: string): Set<TabKey> {
+  if (role === "owner" || role === "admin") return new Set(ADMIN_TABS);
+  if (role === "hr") return new Set(HR_TABS);
+  return new Set(MANAGER_TABS); // manager (branch) + areaManager (region)
+}
+
 export default function ManagerPortal() {
   const router = useRouter();
   const { employee, setEmployee } = useSession();
@@ -97,7 +121,6 @@ export default function ManagerPortal() {
   // branches, manager → their branch). `allowed` is a branch-id set or null (all).
   const scope = resolveScope(employee);
   const baseAllowed = allowedBranchIds(scope, org.branches);
-  const canManageOrg = employee.accessRole === "owner" || employee.accessRole === "admin";
 
   // Multi-tenant context picker: within what this user's role allows, let them
   // narrow the whole portal to one brand and/or one branch.
@@ -189,7 +212,8 @@ export default function ManagerPortal() {
       </Pressable>
     );
   };
-  const isTabVisible = (key: TabKey) => (key === "org" || key === "audit" ? canManageOrg : true);
+  const visibleTabs = tabsForRole(employee.accessRole);
+  const isTabVisible = (key: TabKey) => visibleTabs.has(key);
   const flatNav = TABS.filter((t) => isTabVisible(t.key)).map(renderNavButton);
 
   const userBlock = (
@@ -262,12 +286,16 @@ export default function ManagerPortal() {
           </View>
 
           <ScrollView style={styles.nav} contentContainerStyle={styles.navContent} showsVerticalScrollIndicator={false}>
-            {NAV_GROUPS.map((g, gi) => (
-              <View key={gi} style={gi > 0 ? styles.navGroup : undefined}>
-                {g.label ? <Text style={styles.navGroupLabel}>{g.label}</Text> : null}
-                {g.keys.filter(isTabVisible).map((k) => renderNavButton(TABS.find((t) => t.key === k)!))}
-              </View>
-            ))}
+            {NAV_GROUPS.map((g, gi) => {
+              const keys = g.keys.filter(isTabVisible);
+              if (keys.length === 0) return null;
+              return (
+                <View key={gi} style={gi > 0 ? styles.navGroup : undefined}>
+                  {g.label ? <Text style={styles.navGroupLabel}>{g.label}</Text> : null}
+                  {keys.map((k) => renderNavButton(TABS.find((t) => t.key === k)!))}
+                </View>
+              );
+            })}
           </ScrollView>
           {userBlock}
         </LinearGradient>

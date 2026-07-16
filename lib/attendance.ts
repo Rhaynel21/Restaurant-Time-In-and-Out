@@ -30,8 +30,9 @@ export type EmployeeProfile = {
   companyId: string | null; // org scope: company assignment
   brandId: string | null; // org scope: brand assignment
   branchId: string | null;
+  branchIds: string[]; // area managers cover several branches
   branchName: string | null;
-  accessRole: "owner" | "staff" | "manager" | "hr" | "admin"; // app access level
+  accessRole: "owner" | "staff" | "manager" | "areaManager" | "hr" | "admin"; // app access level
 };
 
 export type AttendanceRecord = {
