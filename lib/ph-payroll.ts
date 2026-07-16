@@ -24,6 +24,9 @@ export type PayFormula = {
   payFrequency: PayFrequency; // monthly · semi-monthly · weekly
   cutoffDay: number; // semi-monthly split day (1–28); 1st period = 1..cutoff
   contributionOn: "second" | "split"; // semi-monthly: deduct SSS/PhilHealth/etc on 2nd cutoff only, or split 50/50
+  // Monthly de-minimis cap (BIR): non-taxable up to this amount, excess is
+  // taxable. 0 = no cap (treat all de-minimis as non-taxable).
+  deMinimisCap: number;
 };
 
 export const DEFAULT_FORMULA: PayFormula = {
@@ -35,6 +38,7 @@ export const DEFAULT_FORMULA: PayFormula = {
   payFrequency: "monthly",
   cutoffDay: 15,
   contributionOn: "second",
+  deMinimisCap: 0,
 };
 
 // One pay period within a month, and how much of the monthly statutory
@@ -240,14 +244,16 @@ export function computePayslip(
   // Allowances + recurring deductions (from the employee's record).
   const allowanceTaxable = round2(Math.max(0, inputs.allowanceTaxable ?? 0));
   const deMinimis = round2(Math.max(0, inputs.deMinimis ?? 0));
+  // BIR de-minimis cap: the excess over the monthly cap is taxable (0 = no cap).
+  const deMinimisTaxable = formula.deMinimisCap > 0 ? round2(Math.max(0, deMinimis - formula.deMinimisCap)) : 0;
   const otherDeductions = (inputs.otherDeductions ?? [])
     .filter((d) => d.amount > 0)
     .map((d) => ({ label: d.label, amount: round2(d.amount) }));
   const totalOtherDeductions = round2(otherDeductions.reduce((s, d) => s + d.amount, 0));
 
   // Taxable compensation excludes the non-taxable de-minimis allowance.
-  const taxableComp = round2(basicPay + otPay + nightPay + regHolidayPay + specialHolidayPay + leavePay + allowanceTaxable);
-  const grossPay = round2(taxableComp + deMinimis);
+  const taxableComp = round2(basicPay + otPay + nightPay + regHolidayPay + specialHolidayPay + leavePay + allowanceTaxable + deMinimisTaxable);
+  const grossPay = round2(basicPay + otPay + nightPay + regHolidayPay + specialHolidayPay + leavePay + allowanceTaxable + deMinimis);
 
   // Statutory contributions: SSS/Pag-IBIG on taxable monthly compensation,
   // PhilHealth on the basic salary component.

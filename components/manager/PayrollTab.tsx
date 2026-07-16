@@ -323,6 +323,7 @@ export function PayrollTab({ allowed, companyId, managerName }: { allowed: Set<s
             <FormulaField label="Night differential" value={pct(draft.nightDiff)} suffix="%" onChange={(n) => setDraft({ ...draft, nightDiff: n / 100 })} />
             <FormulaField label="Regular holiday premium" value={pct(draft.regHolidayPremium)} suffix="%" hint={`= pay ${100 + pct(draft.regHolidayPremium)}% worked`} onChange={(n) => setDraft({ ...draft, regHolidayPremium: n / 100 })} />
             <FormulaField label="Special holiday premium" value={pct(draft.specialHolidayPremium)} suffix="%" hint={`= pay ${100 + pct(draft.specialHolidayPremium)}% worked`} onChange={(n) => setDraft({ ...draft, specialHolidayPremium: n / 100 })} />
+            <FormulaField label="De-minimis cap (₱/mo)" value={draft.deMinimisCap} suffix="₱" hint="0 = no cap · excess is taxable" onChange={(n) => setDraft({ ...draft, deMinimisCap: Math.max(0, n) })} />
           </View>
 
           <Text style={[styles.formulaHead, { marginTop: 18 }]}>Pay schedule</Text>

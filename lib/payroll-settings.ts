@@ -22,6 +22,7 @@ function coerce(data: unknown): PayFormula {
     payFrequency: freq,
     cutoffDay: Math.min(28, Math.max(1, Math.round(num(d.cutoffDay, DEFAULT_FORMULA.cutoffDay)))),
     contributionOn: d.contributionOn === "split" ? "split" : "second",
+    deMinimisCap: Math.max(0, num(d.deMinimisCap, DEFAULT_FORMULA.deMinimisCap)),
   };
 }
 
