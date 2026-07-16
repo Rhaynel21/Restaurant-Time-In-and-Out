@@ -16,15 +16,17 @@ import { LeavesTab } from "@/components/manager/LeavesTab";
 import { MemoTab } from "@/components/manager/MemoTab";
 import { OrgTab } from "@/components/manager/OrgTab";
 import { PayrollTab } from "@/components/manager/PayrollTab";
+import { RequestsTab } from "@/components/manager/RequestsTab";
 import { SchedulesTab } from "@/components/manager/SchedulesTab";
 import { ManagerColors as Colors } from "@/constants/theme";
 import { useSession } from "@/contexts/session-context";
 import { signOutUser } from "@/lib/auth";
+import { subscribePendingRequests } from "@/lib/attendance-requests";
 import { subscribeAlarms } from "@/lib/devices";
 import { subscribePendingLeaves } from "@/lib/leaves";
 import { OrgTree, allowedBranchIds, resolveScope, subscribeOrgTree } from "@/lib/org";
 
-type TabKey = "dashboard" | "attendance" | "dtr" | "schedules" | "employees" | "memo" | "org" | "payroll" | "finalpay" | "documents" | "approvals" | "leaves" | "devices";
+type TabKey = "dashboard" | "attendance" | "dtr" | "schedules" | "employees" | "memo" | "org" | "payroll" | "finalpay" | "documents" | "approvals" | "leaves" | "requests" | "devices";
 type MdIcon = React.ComponentProps<typeof MaterialCommunityIcons>["name"];
 
 const TABS: { key: TabKey; label: string; icon: MdIcon; title: string; subtitle: string }[] = [
@@ -40,6 +42,7 @@ const TABS: { key: TabKey; label: string; icon: MdIcon; title: string; subtitle:
   { key: "documents", label: "Documents", icon: "folder-account-outline", title: "Documents", subtitle: "Upload and manage each employee's 201 files" },
   { key: "approvals", label: "Approvals", icon: "checkbox-marked-circle-outline", title: "Approvals", subtitle: "Pending leave requests awaiting your review" },
   { key: "leaves", label: "Leaves", icon: "airplane", title: "Leaves", subtitle: "Every leave request, any status" },
+  { key: "requests", label: "OT / Corrections", icon: "clock-edit-outline", title: "OT & DTR Requests", subtitle: "Approve overtime filings and DTR corrections" },
   { key: "devices", label: "Devices", icon: "fingerprint", title: "Devices", subtitle: "Biometric terminals and tamper / security alarms" },
 ];
 
@@ -50,7 +53,7 @@ const NAV_GROUPS: { label: string; keys: TabKey[] }[] = [
   { label: "Time & Attendance", keys: ["attendance", "dtr", "schedules"] },
   { label: "Payroll & Compensation", keys: ["payroll", "finalpay"] },
   { label: "People", keys: ["employees", "org", "documents"] },
-  { label: "Leave", keys: ["approvals", "leaves"] },
+  { label: "Leave", keys: ["approvals", "leaves", "requests"] },
   { label: "Communication", keys: ["memo"] },
   { label: "System", keys: ["devices"] },
 ];
@@ -62,6 +65,7 @@ export default function ManagerPortal() {
   const [tab, setTab] = useState<TabKey>("dashboard");
   const [pendingCount, setPendingCount] = useState(0);
   const [alarmCount, setAlarmCount] = useState(0);
+  const [reqCount, setReqCount] = useState(0);
   const [org, setOrg] = useState<OrgTree>({ companies: [], brands: [], branches: [] });
   const [brandFilter, setBrandFilter] = useState<string | null>(null);
   const [branchFilter, setBranchFilter] = useState<string | null>(null);
@@ -73,6 +77,7 @@ export default function ManagerPortal() {
     [],
   );
   useEffect(() => subscribeOrgTree(setOrg, () => setOrg({ companies: [], brands: [], branches: [] })), []);
+  useEffect(() => subscribePendingRequests((r) => setReqCount(r.length), () => setReqCount(0)), []);
 
   if (!employee) return <Redirect href="/login" />;
   if (employee.accessRole === "staff") return <Redirect href="/employee/dashboard" />;
@@ -122,7 +127,7 @@ export default function ManagerPortal() {
   };
 
   const badgeFor = (key: TabKey) =>
-    key === "approvals" ? pendingCount : key === "devices" ? alarmCount : 0;
+    key === "approvals" ? pendingCount : key === "requests" ? reqCount : key === "devices" ? alarmCount : 0;
 
   const active = TABS.find((t) => t.key === tab) ?? TABS[0];
 
@@ -143,6 +148,7 @@ export default function ManagerPortal() {
       {tab === "dtr" && <DtrTab allowed={allowed} />}
       {tab === "devices" && <DevicesTab />}
       {tab === "leaves" && <LeavesTab allowed={allowed} />}
+      {tab === "requests" && <RequestsTab reviewerName={employee.fullName} allowed={allowed} />}
     </>
   );
 

@@ -341,6 +341,17 @@ export default function Dashboard() {
           </View>
           <Ionicons name="chevron-forward" size={18} color="#A8A8A8" />
         </Pressable>
+
+        <Pressable style={styles.scheduleLink} onPress={() => router.push("/employee/request" as never)}>
+          <View style={styles.scheduleLinkIcon}>
+            <MaterialCommunityIcons name="clock-edit-outline" size={20} color="#0A0A0A" />
+          </View>
+          <View style={styles.scheduleLinkText}>
+            <Text style={styles.scheduleLinkTitle}>File a Request</Text>
+            <Text style={styles.scheduleLinkSub}>Overtime or DTR correction</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#A8A8A8" />
+        </Pressable>
       </ScrollView>
 
       <BottomNav active="home" />
