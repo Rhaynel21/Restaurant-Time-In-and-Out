@@ -3,9 +3,11 @@ import { Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-na
 
 import { Card, EmptyState, SectionTitle } from "@/components/manager/ui";
 import { ManagerColors as Colors } from "@/constants/theme";
+import { AttendanceRequest, subscribeAllRequests } from "@/lib/attendance-requests";
 import { getAttendanceForMonth } from "@/lib/attendance";
 import { Dtr, buildDtr, formatClock, formatHours, statusLabel } from "@/lib/dtr";
 import { EmployeeSummary, subscribeEmployees } from "@/lib/employees";
+import { LeaveRequest, subscribeAllLeaves } from "@/lib/leaves";
 import { inScope } from "@/lib/org";
 import { getSchedule } from "@/lib/schedules";
 
@@ -24,7 +26,11 @@ export function DtrTab({ allowed }: { allowed: Set<string> | null }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const [allLeaves, setAllLeaves] = useState<LeaveRequest[]>([]);
+  const [allRequests, setAllRequests] = useState<AttendanceRequest[]>([]);
   useEffect(() => subscribeEmployees(setAllEmployees, () => setAllEmployees([])), []);
+  useEffect(() => subscribeAllLeaves(setAllLeaves, () => setAllLeaves([])), []);
+  useEffect(() => subscribeAllRequests(setAllRequests, () => setAllRequests([])), []);
 
   const generate = async () => {
     setError("");
@@ -44,7 +50,10 @@ export function DtrTab({ allowed }: { allowed: Set<string> | null }) {
         getSchedule(emp.employeeId),
         getAttendanceForMonth(emp.employeeId, y, mo - 1),
       ]);
-      setDtr(buildDtr(y, mo - 1, schedule, records));
+      setDtr(buildDtr(y, mo - 1, schedule, records, {
+        leaves: allLeaves.filter((l) => l.employeeId === emp.employeeId && l.status === "approved"),
+        requests: allRequests.filter((r) => r.employeeId === emp.employeeId && r.status === "approved"),
+      }));
       const label = new Date(y, mo - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
       setMeta({ emp, label });
     } catch (e) {
@@ -205,11 +214,13 @@ function csvCell(v: string) {
 function rowTint(status: string) {
   if (status === "rest") return { backgroundColor: "#FAFDFB" };
   if (status === "holiday") return { backgroundColor: "#FAF7FF" };
+  if (status === "leave") return { backgroundColor: "#F5FBF7" };
   return undefined;
 }
 function statusColor(status: string, late: boolean) {
   if (status === "absent") return { color: Colors.danger };
   if (status === "holiday") return { color: "#7C3AED" };
+  if (status === "leave") return { color: Colors.success };
   if (late) return { color: Colors.warningDeep };
   return undefined;
 }

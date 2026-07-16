@@ -154,6 +154,7 @@ export function annualWithholdingTax(annualTaxable: number): number {
 export type Payslip = {
   // Earnings
   daysPresent: number;
+  paidLeaveDays: number;
   payType: "daily" | "hourly";
   hourlyRate: number;
   dailyRate: number;
@@ -165,6 +166,7 @@ export type Payslip = {
   nightPay: number;
   regHolidayPay: number;
   specialHolidayPay: number;
+  leavePay: number;
   allowanceTaxable: number;
   deMinimis: number;
   grossPay: number;
@@ -232,6 +234,9 @@ export function computePayslip(
   regHolidayPay = round2(regHolidayPay);
   specialHolidayPay = round2(specialHolidayPay);
 
+  // Paid leave: approved paid-leave days paid at the daily rate (or 8h for hourly).
+  const leavePay = round2((pay.type === "hourly" ? formula.hoursPerDay * hourlyRate : dailyRate) * summary.paidLeaveDays);
+
   // Allowances + recurring deductions (from the employee's record).
   const allowanceTaxable = round2(Math.max(0, inputs.allowanceTaxable ?? 0));
   const deMinimis = round2(Math.max(0, inputs.deMinimis ?? 0));
@@ -241,7 +246,7 @@ export function computePayslip(
   const totalOtherDeductions = round2(otherDeductions.reduce((s, d) => s + d.amount, 0));
 
   // Taxable compensation excludes the non-taxable de-minimis allowance.
-  const taxableComp = round2(basicPay + otPay + nightPay + regHolidayPay + specialHolidayPay + allowanceTaxable);
+  const taxableComp = round2(basicPay + otPay + nightPay + regHolidayPay + specialHolidayPay + leavePay + allowanceTaxable);
   const grossPay = round2(taxableComp + deMinimis);
 
   // Statutory contributions: SSS/Pag-IBIG on taxable monthly compensation,
@@ -261,6 +266,7 @@ export function computePayslip(
 
   return {
     daysPresent: summary.present,
+    paidLeaveDays: summary.paidLeaveDays,
     payType: pay.type,
     hourlyRate,
     dailyRate,
@@ -272,6 +278,7 @@ export function computePayslip(
     nightPay,
     regHolidayPay,
     specialHolidayPay,
+    leavePay,
     allowanceTaxable,
     deMinimis,
     grossPay,
@@ -316,7 +323,7 @@ export function computePeriodPayslip(
   const allowanceTaxable = round2(monthly.allowanceTaxable * af);
   const deMinimis = round2(monthly.deMinimis * af);
   const grossPay = round2(
-    earn.basicPay + earn.otPay + earn.nightPay + earn.regHolidayPay + earn.specialHolidayPay + allowanceTaxable + deMinimis,
+    earn.basicPay + earn.otPay + earn.nightPay + earn.regHolidayPay + earn.specialHolidayPay + earn.leavePay + allowanceTaxable + deMinimis,
   );
 
   const sssEE = round2(monthly.sssEE * df);
@@ -332,6 +339,7 @@ export function computePeriodPayslip(
 
   return {
     daysPresent: earn.daysPresent,
+    paidLeaveDays: earn.paidLeaveDays,
     payType: earn.payType,
     hourlyRate: earn.hourlyRate,
     dailyRate: earn.dailyRate,
@@ -343,6 +351,7 @@ export function computePeriodPayslip(
     nightPay: earn.nightPay,
     regHolidayPay: earn.regHolidayPay,
     specialHolidayPay: earn.specialHolidayPay,
+    leavePay: earn.leavePay,
     allowanceTaxable,
     deMinimis,
     grossPay,

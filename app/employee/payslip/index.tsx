@@ -10,7 +10,9 @@ import { useSession } from "@/contexts/session-context";
 import { useResponsiveInset } from "@/hooks/use-responsive";
 import { getAttendanceForMonth } from "@/lib/attendance";
 import { buildDtr } from "@/lib/dtr";
+import { AttendanceRequest, subscribeMyRequests } from "@/lib/attendance-requests";
 import { EmployeeMaster, subscribeEmployeeMaster } from "@/lib/hr";
+import { LeaveRequest, subscribeMyLeaves } from "@/lib/leaves";
 import { loanBalanceAfter, loanDeductionForMonth } from "@/lib/loans";
 import { subscribePayrollFormula } from "@/lib/payroll-settings";
 import { DEFAULT_FORMULA, PayBasis, PayFormula, PayInputs, Payslip as PayslipData, computePayslip, peso } from "@/lib/ph-payroll";
@@ -34,11 +36,21 @@ export default function EmployeePayslip() {
   const [slip, setSlip] = useState<PayslipData | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const [myLeaves, setMyLeaves] = useState<LeaveRequest[]>([]);
+  const [myRequests, setMyRequests] = useState<AttendanceRequest[]>([]);
   const employeeId = employee?.employeeId ?? "";
 
   useEffect(() => {
     if (!employeeId) return;
     return subscribeEmployeeMaster(employeeId, setMaster, () => setMaster(null));
+  }, [employeeId]);
+  useEffect(() => {
+    if (!employeeId) return;
+    return subscribeMyLeaves(employeeId, setMyLeaves, () => setMyLeaves([]));
+  }, [employeeId]);
+  useEffect(() => {
+    if (!employeeId) return;
+    return subscribeMyRequests(employeeId, setMyRequests, () => setMyRequests([]));
   }, [employeeId]);
 
   useEffect(
@@ -75,7 +87,11 @@ export default function EmployeePayslip() {
           getSchedule(master.employeeId),
           getAttendanceForMonth(master.employeeId, y, mo - 1),
         ]);
-        const s = computePayslip(buildDtr(y, mo - 1, schedule, records), pay, inputs, formula);
+        const dtr = buildDtr(y, mo - 1, schedule, records, {
+          leaves: myLeaves.filter((l) => l.status === "approved"),
+          requests: myRequests.filter((r) => r.status === "approved"),
+        });
+        const s = computePayslip(dtr, pay, inputs, formula);
         if (alive) setSlip(s);
       } finally {
         if (alive) setLoading(false);
@@ -84,7 +100,7 @@ export default function EmployeePayslip() {
     return () => {
       alive = false;
     };
-  }, [master, month, formula]);
+  }, [master, month, formula, myLeaves, myRequests]);
 
   const monthLabel = useMemo(() => {
     const [y, mo] = month.split("-").map(Number);
@@ -144,6 +160,7 @@ export default function EmployeePayslip() {
               {slip.nightPay > 0 && <Row label="Night differential" detail={`${slip.nightHours} h × 10%`} value={peso(slip.nightPay)} />}
               {slip.regHolidayPay > 0 && <Row label="Regular holiday" value={peso(slip.regHolidayPay)} />}
               {slip.specialHolidayPay > 0 && <Row label="Special holiday" value={peso(slip.specialHolidayPay)} />}
+              {slip.leavePay > 0 && <Row label="Leave pay" detail={`${slip.paidLeaveDays} paid day${slip.paidLeaveDays === 1 ? "" : "s"}`} value={peso(slip.leavePay)} />}
               {slip.allowanceTaxable > 0 && <Row label="Allowance" value={peso(slip.allowanceTaxable)} />}
               {slip.deMinimis > 0 && <Row label="De-minimis (non-taxable)" value={peso(slip.deMinimis)} />}
               <Row label="Gross Pay" value={peso(slip.grossPay)} strong />

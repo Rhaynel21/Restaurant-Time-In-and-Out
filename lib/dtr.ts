@@ -6,7 +6,15 @@ import { Schedule, Shift, effectiveShift, formatShift, scheduleBreakMinutes, shi
 // employee's schedule + Philippine holidays into one row per calendar day. Shared
 // by the manager portal (and reusable anywhere a DTR is needed).
 
-export type DtrStatus = "present" | "rest" | "holiday" | "absent" | "upcoming";
+export type DtrStatus = "present" | "rest" | "holiday" | "absent" | "leave" | "upcoming";
+
+// Approved requests folded into the DTR: paid leaves, DTR corrections (override
+// a day's in/out), and filed overtime (a floor on that day's OT). Structural
+// shapes so callers can pass their leave / attendance-request records directly.
+export type DtrApprovals = {
+  leaves?: { startDate: string; endDate: string; type: string; status?: string }[];
+  requests?: { kind: string; date: string; hours?: number | null; correctIn?: string | null; correctOut?: string | null; status?: string }[];
+};
 
 export type DtrRow = {
   day: number;
@@ -27,6 +35,7 @@ export type DtrRow = {
   late: boolean;
   holiday: Holiday | null;
   status: DtrStatus;
+  leaveType: string | null; // set when status === "leave"
 };
 
 export type DtrSummary = {
@@ -36,6 +45,7 @@ export type DtrSummary = {
   underMinutes: number;
   nightMinutes: number;
   present: number;
+  paidLeaveDays: number; // approved paid-leave days (paid but not "worked")
   late: number;
   absent: number;
   restDays: number;
@@ -52,6 +62,29 @@ const NIGHT_END_HOUR = 6;
 
 function pad(n: number) {
   return String(n).padStart(2, "0");
+}
+
+// "HH:MM" on a given date → Date.
+function hhmm(date: Date, s: string): Date {
+  const [h, m] = s.split(":").map(Number);
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), h || 0, m || 0, 0, 0);
+}
+
+// Expand an inclusive YYYY-MM-DD range into its list of day strings.
+function expandRange(startYMD: string, endYMD: string): string[] {
+  const [sy, sm, sd] = startYMD.split("-").map(Number);
+  const [ey, em, ed] = endYMD.split("-").map(Number);
+  if (!sy || !ey) return [];
+  const out: string[] = [];
+  const d = new Date(sy, (sm || 1) - 1, sd || 1);
+  const end = new Date(ey, (em || 1) - 1, ed || 1);
+  let guard = 0;
+  while (d <= end && guard < 400) {
+    out.push(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`);
+    d.setDate(d.getDate() + 1);
+    guard += 1;
+  }
+  return out;
 }
 
 // Minutes of overlap between two [start, end] millisecond ranges.
@@ -89,7 +122,21 @@ export function buildDtr(
   month: number,
   schedule: Schedule,
   records: AttendanceRecord[],
+  approvals?: DtrApprovals,
 ): Dtr {
+  // Index approved requests/leaves by day so they can be folded into the DTR.
+  const correctionByYmd = new Map<string, { correctIn?: string | null; correctOut?: string | null }>();
+  const otHoursByYmd = new Map<string, number>();
+  for (const r of approvals?.requests ?? []) {
+    if (r.status && r.status !== "approved") continue;
+    if (r.kind === "correction") correctionByYmd.set(r.date, { correctIn: r.correctIn, correctOut: r.correctOut });
+    else if (r.kind === "overtime") otHoursByYmd.set(r.date, (otHoursByYmd.get(r.date) ?? 0) + (r.hours ?? 0));
+  }
+  const leaveByYmd = new Map<string, string>();
+  for (const l of approvals?.leaves ?? []) {
+    if (l.status && l.status !== "approved") continue;
+    for (const dstr of expandRange(l.startDate, l.endDate)) leaveByYmd.set(dstr, l.type);
+  }
   // Collapse multiple punches per day into earliest-in / latest-out, keeping the
   // day's break window (break-out / break-in) if the bridge recorded one.
   const byDay = new Map<number, { in: Date; out: Date | null; breakOut: Date | null; breakIn: Date | null }>();
@@ -119,6 +166,7 @@ export function buildDtr(
     underMinutes: 0,
     nightMinutes: 0,
     present: 0,
+    paidLeaveDays: 0,
     late: 0,
     absent: 0,
     restDays: 0,
@@ -133,7 +181,16 @@ export function buildDtr(
     const date = new Date(year, month, day);
     const shift = effectiveShift(schedule, ymd);
     const holiday = getHoliday(ymd);
-    const att = byDay.get(day);
+    let att = byDay.get(day);
+
+    // Approved DTR correction: override this day's in/out (fills a missed punch).
+    const corr = correctionByYmd.get(ymd);
+    if (corr && (corr.correctIn || corr.correctOut)) {
+      const cin = corr.correctIn ? hhmm(date, corr.correctIn) : att?.in ?? null;
+      let cout = corr.correctOut ? hhmm(date, corr.correctOut) : att?.out ?? null;
+      if (cin && cout && cout.getTime() <= cin.getTime()) cout = new Date(cout.getTime() + 24 * 3600000);
+      if (cin) att = { in: cin, out: cout, breakOut: att?.breakOut ?? null, breakIn: att?.breakIn ?? null };
+    }
 
     // Paid minutes the schedule expects on this day (0 on rest days).
     const scheduledPaid = shift.off ? 0 : Math.max(0, shiftMinutes(shift) - scheduledBreak);
@@ -146,6 +203,7 @@ export function buildDtr(
     let underMinutes = 0;
     let nightMins = 0;
     let late = false;
+    let leaveType: string | null = null;
 
     if (att) {
       status = "present";
@@ -193,11 +251,24 @@ export function buildDtr(
       summary.restDays += 1;
     } else if (holiday) {
       status = "holiday";
+    } else if (leaveByYmd.has(ymd)) {
+      status = "leave";
+      leaveType = leaveByYmd.get(ymd) ?? null;
+      if (leaveType !== "unpaid") summary.paidLeaveDays += 1;
     } else if (date.getTime() < today.getTime()) {
       status = "absent";
       summary.absent += 1;
     } else {
       status = "upcoming";
+    }
+
+    // Approved filed overtime sets a floor on this day's OT (present days).
+    if (status === "present") {
+      const otFloor = Math.round((otHoursByYmd.get(ymd) ?? 0) * 60);
+      if (otFloor > otMinutes) {
+        summary.otMinutes += otFloor - otMinutes;
+        otMinutes = otFloor;
+      }
     }
 
     rows.push({
@@ -219,6 +290,7 @@ export function buildDtr(
       late,
       holiday,
       status,
+      leaveType,
     });
   }
 
@@ -231,7 +303,7 @@ export function sliceDtr(dtr: Dtr, fromDay: number, toDay: number): Dtr {
   const rows = dtr.rows.filter((r) => r.day >= fromDay && r.day <= toDay);
   const summary: DtrSummary = {
     totalMinutes: 0, breakMinutes: 0, otMinutes: 0, underMinutes: 0, nightMinutes: 0,
-    present: 0, late: 0, absent: 0, restDays: 0,
+    present: 0, paidLeaveDays: 0, late: 0, absent: 0, restDays: 0,
   };
   for (const r of rows) {
     summary.totalMinutes += r.workedMinutes;
@@ -240,6 +312,7 @@ export function sliceDtr(dtr: Dtr, fromDay: number, toDay: number): Dtr {
     summary.underMinutes += r.underMinutes;
     summary.nightMinutes += r.nightMinutes;
     if (r.status === "present") summary.present += 1;
+    if (r.status === "leave" && r.leaveType !== "unpaid") summary.paidLeaveDays += 1;
     if (r.late) summary.late += 1;
     if (r.status === "absent") summary.absent += 1;
     if (r.status === "rest") summary.restDays += 1;
@@ -261,6 +334,7 @@ export function statusLabel(row: DtrRow): string {
   if (row.status === "present") return row.late ? "Present (Late)" : "Present";
   if (row.status === "rest") return "Rest day";
   if (row.status === "holiday") return row.holiday ? row.holiday.name : "Holiday";
+  if (row.status === "leave") return row.leaveType ? `Leave (${row.leaveType})` : "Leave";
   if (row.status === "absent") return "Absent";
   return "";
 }

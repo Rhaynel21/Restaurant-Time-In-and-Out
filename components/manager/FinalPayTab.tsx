@@ -8,6 +8,7 @@ import { getAttendanceForMonth } from "@/lib/attendance";
 import { buildDtr } from "@/lib/dtr";
 import { EmployeeMaster, subscribeEmployeeMasters } from "@/lib/hr";
 import { SilBalance, silBalance } from "@/lib/leave-benefits";
+import { AttendanceRequest, subscribeAllRequests } from "@/lib/attendance-requests";
 import { subscribeAllLeaves, LeaveRequest } from "@/lib/leaves";
 import { inScope } from "@/lib/org";
 import { subscribePayrollFormula } from "@/lib/payroll-settings";
@@ -73,9 +74,11 @@ export function FinalPayTab({ allowed, companyId }: { allowed: Set<string> | nul
   const [error, setError] = useState("");
 
   const [formula, setFormula] = useState<PayFormula>(DEFAULT_FORMULA);
+  const [requests, setRequests] = useState<AttendanceRequest[]>([]);
 
   useEffect(() => subscribeEmployeeMasters(setEmployees, () => setEmployees([])), []);
   useEffect(() => subscribeAllLeaves(setLeaves, () => setLeaves([])), []);
+  useEffect(() => subscribeAllRequests(setRequests, () => setRequests([])), []);
   useEffect(() => subscribePayrollFormula(companyId, setFormula, () => {}), [companyId]);
 
   const scoped = useMemo(
@@ -112,7 +115,11 @@ export function FinalPayTab({ allowed, companyId }: { allowed: Set<string> | nul
           getAttendanceForMonth(selected.employeeId, year, m),
         ]);
         if (records.length === 0) continue;
-        const slip = computePayslip(buildDtr(year, m, schedule, records), pay, inputs, formula);
+        const dtr = buildDtr(year, m, schedule, records, {
+          leaves: leaves.filter((l) => l.employeeId === selected.employeeId && l.status === "approved"),
+          requests: requests.filter((r) => r.employeeId === selected.employeeId && r.status === "approved"),
+        });
+        const slip = computePayslip(dtr, pay, inputs, formula);
         if (slip.grossPay <= 0) continue;
         a.months += 1;
         a.gross += slip.grossPay;

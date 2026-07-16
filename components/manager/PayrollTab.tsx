@@ -7,6 +7,8 @@ import { ManagerColors as Colors } from "@/constants/theme";
 import { getAttendanceForMonth } from "@/lib/attendance";
 import { buildDtr } from "@/lib/dtr";
 import { EmployeeMaster, subscribeEmployeeMasters } from "@/lib/hr";
+import { AttendanceRequest, subscribeAllRequests } from "@/lib/attendance-requests";
+import { LeaveRequest, subscribeAllLeaves } from "@/lib/leaves";
 import { loanBalanceAfter, loanDeductionForMonth } from "@/lib/loans";
 import { inScope } from "@/lib/org";
 import { savePayrollFormula, subscribePayrollFormula } from "@/lib/payroll-settings";
@@ -50,7 +52,12 @@ export function PayrollTab({ allowed, companyId }: { allowed: Set<string> | null
   const [savingFormula, setSavingFormula] = useState(false);
   const [formulaMsg, setFormulaMsg] = useState("");
 
+  const [allLeaves, setAllLeaves] = useState<LeaveRequest[]>([]);
+  const [allRequests, setAllRequests] = useState<AttendanceRequest[]>([]);
+
   useEffect(() => subscribeEmployeeMasters(setEmployees, () => setEmployees([])), []);
+  useEffect(() => subscribeAllLeaves(setAllLeaves, () => setAllLeaves([])), []);
+  useEffect(() => subscribeAllRequests(setAllRequests, () => setAllRequests([])), []);
   useEffect(
     () => subscribePayrollFormula(companyId, (f) => { setFormula(f); setDraft(f); }, () => {}),
     [companyId],
@@ -85,7 +92,10 @@ export function PayrollTab({ allowed, companyId }: { allowed: Set<string> | null
             getSchedule(e.employeeId),
             getAttendanceForMonth(e.employeeId, y, mo - 1),
           ]);
-          const dtr = buildDtr(y, mo - 1, schedule, records);
+          const dtr = buildDtr(y, mo - 1, schedule, records, {
+            leaves: allLeaves.filter((l) => l.employeeId === e.employeeId && l.status === "approved"),
+            requests: allRequests.filter((r) => r.employeeId === e.employeeId && r.status === "approved"),
+          });
           const pay: PayBasis = {
             type: e.payType,
             dailyRate: e.dailyRate ?? (e.hourlyRate != null ? e.hourlyRate * 8 : 0),
@@ -420,6 +430,7 @@ function Payslip({ slip }: { slip: PayslipData }) {
           {slip.nightPay > 0 && <LineItem label="Night differential" detail={`${slip.nightHours} h × ${peso(slip.hourlyRate)} × 10%`} value={peso(slip.nightPay)} />}
           {slip.regHolidayPay > 0 && <LineItem label="Regular holiday" detail="+100% of daily rate" value={peso(slip.regHolidayPay)} />}
           {slip.specialHolidayPay > 0 && <LineItem label="Special holiday" detail="+30% of daily rate" value={peso(slip.specialHolidayPay)} />}
+          {slip.leavePay > 0 && <LineItem label="Leave pay" detail={`${slip.paidLeaveDays} paid leave day${slip.paidLeaveDays === 1 ? "" : "s"}`} value={peso(slip.leavePay)} />}
           {slip.allowanceTaxable > 0 && <LineItem label="Taxable allowance" detail="monthly, taxable" value={peso(slip.allowanceTaxable)} />}
           {slip.deMinimis > 0 && <LineItem label="De-minimis" detail="monthly, non-taxable" value={peso(slip.deMinimis)} />}
           <LineItem label="Gross Pay" value={peso(slip.grossPay)} strong />
