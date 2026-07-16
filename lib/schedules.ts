@@ -249,8 +249,11 @@ export function shiftMinutes(shift: Shift): number {
   return shiftBlocks(shift).reduce((sum, b) => {
     const [sh, sm] = b.start.split(":").map(Number);
     const [eh, em] = b.end.split(":").map(Number);
-    const mins = eh * 60 + em - (sh * 60 + sm);
-    return sum + (mins > 0 ? mins : 0);
+    let mins = eh * 60 + em - (sh * 60 + sm);
+    // A block whose end is at/before its start crosses midnight (e.g. an
+    // overnight 22:00→06:00 shift) — add a full day so its length is positive.
+    if (mins <= 0) mins += 24 * 60;
+    return sum + mins;
   }, 0);
 }
 

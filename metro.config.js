@@ -4,6 +4,11 @@ const { getDefaultConfig } = require("expo/metro-config");
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(__dirname);
 
+// hikvision-bridge is a standalone Node service (its own package.json + runtime),
+// never imported by the app. Keep Metro from scanning/bundling it — otherwise it
+// tries to resolve the bridge's Node modules and fails the web export.
+config.resolver.blockList = /[/\\]hikvision-bridge[/\\].*/;
+
 // expo-sqlite on web ships a WebAssembly build (wa-sqlite.wasm). Metro must
 // resolve .wasm as an asset, otherwise bundling fails with:
 //   "Unable to resolve module ./wa-sqlite/wa-sqlite.wasm"

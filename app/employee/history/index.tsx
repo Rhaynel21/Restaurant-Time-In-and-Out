@@ -386,6 +386,8 @@ function LegendItem({ color, label }: { color: string; label: string }) {
   );
 }
 
+const MAX_SHIFT_MINUTES = 16 * 60; // cap a forgotten-time-out record's display
+
 function hhmm(totalMinutes: number) {
   return `${String(Math.floor(totalMinutes / 60)).padStart(2, "0")}:${String(totalMinutes % 60).padStart(2, "0")}`;
 }
@@ -393,7 +395,8 @@ function hhmm(totalMinutes: number) {
 function AttendanceCard({ record }: { record: AttendanceRecord }) {
   const checkInText = formatTime(record.checkInAt);
   const checkOutText = record.checkOutAt ? formatTime(record.checkOutAt) : "--:--";
-  const totalText = typeof record.totalMinutes === "number" ? hhmm(record.totalMinutes) : "--:--";
+  const totalText =
+    typeof record.totalMinutes === "number" ? hhmm(Math.min(record.totalMinutes, MAX_SHIFT_MINUTES)) : "--:--";
 
   const hasBreak = !!(record.breakOutAt || record.breakInAt);
   const breakOutText = record.breakOutAt ? formatTime(record.breakOutAt) : "--:--";

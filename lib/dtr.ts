@@ -33,6 +33,7 @@ export type DtrRow = {
   underMinutes: number; // undertime: scheduled paid shift not met (working days with a full punch)
   nightMinutes: number; // hours worked within the 10 PM–6 AM night-differential window
   late: boolean;
+  anomaly: boolean; // punch pair exceeds the max sane shift (forgotten time-out) → capped
   holiday: Holiday | null;
   status: DtrStatus;
   leaveType: string | null; // set when status === "leave"
@@ -49,12 +50,20 @@ export type DtrSummary = {
   late: number;
   absent: number;
   restDays: number;
+  anomalies: number; // days with a capped/forgotten-time-out punch pair (need review)
 };
 
 export type Dtr = { rows: DtrRow[]; summary: DtrSummary };
 
 const WD_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const LATE_GRACE_MIN = 5;
+
+// A single punch pair longer than this is treated as a data anomaly — almost
+// always a forgotten time-out (or a stale open record that got closed days
+// later). We cap it so one missed punch can't inject hundreds of overtime hours
+// into payroll. The bridge's midnight roll-over prevents most of these; this is
+// the payroll-side safety net for any that slip through or already exist.
+export const MAX_SHIFT_MINUTES = 16 * 60; // 16 hours
 
 // Philippine night-differential window: 10:00 PM → 6:00 AM.
 const NIGHT_START_HOUR = 22;
@@ -137,10 +146,29 @@ export function buildDtr(
     if (l.status && l.status !== "approved") continue;
     for (const dstr of expandRange(l.startDate, l.endDate)) leaveByYmd.set(dstr, l.type);
   }
+  // Midnight roll-over recombination: an overnight shift split at 00:00 into a
+  // parent (…→23:59, autoClosed) and a continuation (00:00→real-out, autoOpened)
+  // is stitched back into ONE shift on the parent's start day, so the hours land
+  // on the day the shift began — exactly as an un-split overnight shift would.
+  const working = records.map((r) => ({ ...r }));
+  const byId = new Map(working.map((r) => [r.id, r]));
+  const skip = new Set<string>();
+  for (const r of working) {
+    if (!r.autoOpened || !r.continuedFrom) continue;
+    const parent = byId.get(r.continuedFrom);
+    if (!parent) continue;
+    // Extend the parent shift to the continuation's real time-out (null = still open).
+    parent.checkOutAt = r.checkOutAt;
+    if (!parent.breakOutAt && r.breakOutAt) parent.breakOutAt = r.breakOutAt;
+    if (!parent.breakInAt && r.breakInAt) parent.breakInAt = r.breakInAt;
+    skip.add(r.id);
+  }
+  const effectiveRecords = working.filter((r) => !skip.has(r.id));
+
   // Collapse multiple punches per day into earliest-in / latest-out, keeping the
   // day's break window (break-out / break-in) if the bridge recorded one.
   const byDay = new Map<number, { in: Date; out: Date | null; breakOut: Date | null; breakIn: Date | null }>();
-  for (const r of records) {
+  for (const r of effectiveRecords) {
     if (r.checkInAt.getFullYear() !== year || r.checkInAt.getMonth() !== month) continue;
     const day = r.checkInAt.getDate();
     const cur = byDay.get(day);
@@ -170,6 +198,7 @@ export function buildDtr(
     late: 0,
     absent: 0,
     restDays: 0,
+    anomalies: 0,
   };
 
   // Scheduled meal break is unpaid, so the paid target for a working day is the
@@ -203,6 +232,7 @@ export function buildDtr(
     let underMinutes = 0;
     let nightMins = 0;
     let late = false;
+    let anomaly = false;
     let leaveType: string | null = null;
 
     if (att) {
@@ -213,7 +243,16 @@ export function buildDtr(
         breakMinutes = Math.round((att.breakIn.getTime() - att.breakOut.getTime()) / 60000);
       }
       if (att.out) {
-        const gross = Math.max(0, Math.round((att.out.getTime() - att.in.getTime()) / 60000));
+        let gross = Math.max(0, Math.round((att.out.getTime() - att.in.getTime()) / 60000));
+        // Forgotten time-out / stale open record: a shift longer than the sane
+        // maximum is capped so it can't inject phantom overtime. Fall back to the
+        // scheduled paid target (a normal shift, no OT); with no schedule, cap at
+        // the max. The day is flagged so a manager can correct the punch.
+        if (gross > MAX_SHIFT_MINUTES) {
+          anomaly = true;
+          summary.anomalies += 1;
+          gross = scheduledPaid > 0 ? scheduledPaid + breakMinutes : MAX_SHIFT_MINUTES;
+        }
         workedMinutes = Math.max(0, gross - breakMinutes);
         summary.totalMinutes += workedMinutes;
         summary.breakMinutes += breakMinutes;
@@ -288,6 +327,7 @@ export function buildDtr(
       underMinutes,
       nightMinutes: nightMins,
       late,
+      anomaly,
       holiday,
       status,
       leaveType,
@@ -303,7 +343,7 @@ export function sliceDtr(dtr: Dtr, fromDay: number, toDay: number): Dtr {
   const rows = dtr.rows.filter((r) => r.day >= fromDay && r.day <= toDay);
   const summary: DtrSummary = {
     totalMinutes: 0, breakMinutes: 0, otMinutes: 0, underMinutes: 0, nightMinutes: 0,
-    present: 0, paidLeaveDays: 0, late: 0, absent: 0, restDays: 0,
+    present: 0, paidLeaveDays: 0, late: 0, absent: 0, restDays: 0, anomalies: 0,
   };
   for (const r of rows) {
     summary.totalMinutes += r.workedMinutes;
@@ -316,6 +356,7 @@ export function sliceDtr(dtr: Dtr, fromDay: number, toDay: number): Dtr {
     if (r.late) summary.late += 1;
     if (r.status === "absent") summary.absent += 1;
     if (r.status === "rest") summary.restDays += 1;
+    if (r.anomaly) summary.anomalies += 1;
   }
   return { rows, summary };
 }

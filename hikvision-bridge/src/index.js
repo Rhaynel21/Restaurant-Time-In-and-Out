@@ -24,6 +24,7 @@ const tamperSeen = new Set();
 let consecutiveFails = 0;
 let lastHeartbeatMs = 0;
 let lastOnline = null;
+let lastRolloverYmd = null; // guards the once-a-day midnight roll-over
 
 function log(...args) {
   console.log(new Date().toISOString(), ...args);
@@ -55,7 +56,13 @@ async function processEvent(evt) {
 
   const open = await store.findOpenRecord(emp.employeeId);
 
-  if (!open) {
+  if (open && store.isStaleOpen(open, evt.time)) {
+    // The previous shift was never timed out — auto-close it (capped) instead of
+    // letting this punch balloon it into a multi-day record, then start fresh.
+    await store.closeStaleRecord(open);
+    const id = await store.writeCheckIn(emp, evt.time);
+    log(`⤺ auto-closed stale shift ${open.id}; ▸ IN ${emp.employeeId} (${emp.name}) → ${id}`);
+  } else if (!open) {
     const id = await store.writeCheckIn(emp, evt.time);
     log(`▸ IN  ${emp.employeeId} (${emp.name}) → ${id}`);
   } else {
@@ -81,10 +88,27 @@ async function processEvent(evt) {
   lastPunchByEmployee.set(emp.employeeId, evt.time.getTime());
 }
 
+// Run the midnight roll-over once per day, around 23:59, so open shifts are
+// closed for the day and overnight shifts get their 00:00 continuation.
+async function maybeRollover(now) {
+  const ymd = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
+  if (lastRolloverYmd === ymd) return;
+  if (now.getHours() === 23 && now.getMinutes() >= 58) {
+    lastRolloverYmd = ymd;
+    try {
+      const res = await store.midnightRollover(now);
+      log(`⤺ midnight roll-over: closed ${res.closed}, re-opened ${res.reopened} overnight shift(s)`);
+    } catch (err) {
+      log(`! midnight roll-over failed: ${err.message}`);
+    }
+  }
+}
+
 async function poll() {
   // Start a little before the last seen event to tolerate clock skew; the seen
   // set prevents double-processing the overlap.
   const now = new Date();
+  await maybeRollover(now);
   const start = lastTimeMs
     ? new Date(lastTimeMs - 60000)
     : new Date(now.getFullYear(), now.getMonth(), now.getDate()); // today 00:00 on first run

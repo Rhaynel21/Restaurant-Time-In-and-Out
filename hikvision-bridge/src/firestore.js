@@ -314,6 +314,104 @@ async function recordAlarm(alarm) {
   }
 }
 
+// ── Midnight roll-over & orphan protection ───────────────────────────────────
+// A shift left open (someone forgot to time out) must never grow into a giant
+// multi-day record that injects hundreds of overtime hours into payroll. Two
+// defenses:
+//   1. midnightRollover() — at ~23:59 every open record is closed for the day;
+//      genuine overnight shifts (evening check-in) get a continuation record
+//      auto-opened at 00:00 so the real time-out still lands. buildDtr stitches
+//      the pair back onto the shift's start day, so the hours stay exact.
+//   2. A stale open record (older than MAX_SHIFT_MINUTES) is never used as the
+//      target of a new punch — it's auto-closed and the scan starts a fresh
+//      shift (see closeStaleRecord + processEvent).
+const MAX_SHIFT_MINUTES = 16 * 60;
+const MAX_SHIFT_MS = MAX_SHIFT_MINUTES * 60 * 1000;
+const { serverTimestamp } = admin.firestore.FieldValue;
+
+function endOfDay(d) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 0);
+}
+function startOfNextDay(d) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1, 0, 0, 0, 0);
+}
+// Net worked minutes, capped so a forgotten time-out can't pay phantom hours.
+function cappedTotalMinutes(checkInMs, outMs, breakMs) {
+  let gross = Math.max(0, Math.round((outMs - checkInMs) / 60000));
+  if (gross > MAX_SHIFT_MINUTES) gross = MAX_SHIFT_MINUTES;
+  return Math.max(0, gross - Math.round((breakMs || 0) / 60000));
+}
+
+// True when an open record is too old to be the target of the current punch —
+// i.e. the person forgot to time out on a previous shift.
+function isStaleOpen(record, now) {
+  const ci = record.checkInAt && record.checkInAt.toMillis ? record.checkInAt.toMillis() : null;
+  if (ci == null) return false;
+  return now.getTime() - ci > MAX_SHIFT_MS;
+}
+
+// Close a stale/forgotten open record at the end of its own check-in day so it
+// never absorbs a later day's punch. Flagged autoClosed for review.
+async function closeStaleRecord(record) {
+  const ci = record.checkInAt.toDate();
+  const eod = endOfDay(ci);
+  const total = cappedTotalMinutes(ci.getTime(), eod.getTime(), breakMillis(record));
+  await db
+    .collection("attendance")
+    .doc(record.id)
+    .set(
+      { checkOutAt: Timestamp.fromDate(eod), totalMinutes: total, autoClosed: true, updatedAt: serverTimestamp() },
+      { merge: true },
+    );
+  return record.id;
+}
+
+// Close every open record for the day; re-open a continuation at 00:00 for
+// genuine overnight shifts so their real time-out still lands the next morning.
+async function midnightRollover(now = new Date()) {
+  const snap = await db.collection("attendance").where("checkOutAt", "==", null).get();
+  const eod = endOfDay(now);
+  const nextStart = startOfNextDay(now);
+  let closed = 0;
+  let reopened = 0;
+  for (const docSnap of snap.docs) {
+    const r = docSnap.data();
+    const ci = r.checkInAt && r.checkInAt.toDate ? r.checkInAt.toDate() : null;
+    if (!ci) continue;
+    const total = cappedTotalMinutes(ci.getTime(), eod.getTime(), breakMillis(r));
+    await docSnap.ref.set(
+      { checkOutAt: Timestamp.fromDate(eod), totalMinutes: total, autoClosed: true, updatedAt: serverTimestamp() },
+      { merge: true },
+    );
+    closed += 1;
+    // Re-open only for genuine overnight shifts (evening check-in), and never
+    // carry a continuation twice — so a forgotten punch stops after one day.
+    if (ci.getHours() >= 18 && !r.autoOpened) {
+      const id = `${r.employeeId}-${nextStart.getTime()}-carry`;
+      await db.collection("attendance").doc(id).set({
+        employeeId: r.employeeId,
+        employeeName: r.employeeName,
+        branchId: r.branchId,
+        branchName: r.branchName,
+        checkInAt: Timestamp.fromDate(nextStart),
+        checkOutAt: null,
+        breakOutAt: null,
+        breakInAt: null,
+        checkInLocation: null,
+        checkOutLocation: null,
+        totalMinutes: null,
+        autoOpened: true,
+        continuedFrom: docSnap.id,
+        source: "hikvision",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      reopened += 1;
+    }
+  }
+  return { closed, reopened };
+}
+
 module.exports = {
   resolveEmployee,
   getScheduleBreak,
@@ -327,4 +425,7 @@ module.exports = {
   flushQueue,
   heartbeat,
   recordAlarm,
+  isStaleOpen,
+  closeStaleRecord,
+  midnightRollover,
 };

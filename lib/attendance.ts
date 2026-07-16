@@ -48,6 +48,13 @@ export type AttendanceRecord = {
   breakOutAt: Date | null; // left for break
   breakInAt: Date | null; // returned from break
   totalMinutes: number | null;
+  // Midnight roll-over flags (set by the bridge): a shift still open at 23:59 is
+  // auto-closed for that day (autoClosed) and, if it's an overnight shift, a
+  // continuation record is auto-opened at 00:00 (autoOpened + continuedFrom).
+  // buildDtr recombines the pair back onto the shift's start day.
+  autoClosed: boolean;
+  autoOpened: boolean;
+  continuedFrom: string | null;
 };
 
 function timestampToDate(value: unknown) {
@@ -75,6 +82,9 @@ function toAttendanceRecord(record: LocalAttendanceRecord): AttendanceRecord {
     breakOutAt: null,
     breakInAt: null,
     totalMinutes: record.totalMinutes,
+    autoClosed: false,
+    autoOpened: false,
+    continuedFrom: null,
   };
 }
 
@@ -93,6 +103,9 @@ function recordFromRemote(id: string, data: Record<string, unknown>): Attendance
     breakOutAt: timestampToDate(data.breakOutAt),
     breakInAt: timestampToDate(data.breakInAt),
     totalMinutes: typeof data.totalMinutes === "number" ? data.totalMinutes : null,
+    autoClosed: data.autoClosed === true,
+    autoOpened: data.autoOpened === true,
+    continuedFrom: typeof data.continuedFrom === "string" ? data.continuedFrom : null,
   };
 }
 
