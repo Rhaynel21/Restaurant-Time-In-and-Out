@@ -15,6 +15,7 @@
     "seed:hr": "node seed-hr-extras.js",
     "seed:talent": "node seed-talent.js",
     "seed:admin": "node seed-admin-extras.js",
+    "clean:attendance": "node clean-bad-attendance.js",
     "sync:users": "node sync-users.js",
     "lint": "expo lint"
   },
