@@ -50,7 +50,7 @@ export const EMPTY_ORG: OrgTree = { companies: [], brands: [], areas: [], branch
 // changes made by an administrator take effect immediately.
 export async function getOrgBranch(branchId: string): Promise<Branch | null> {
   const snap = await getDocs(query(collectionGroup(db, "branches"), where(documentId(), "==", branchId)));
-  const d = snap.docs.find((row) => row.ref.path.startsWith("organization/"));
+  const d = snap.docs.find((row) => row.ref.path.startsWith("organization/") || row.ref.path.startsWith("companies/"));
   if (!d) return null;
   const data = d.data();
   return {

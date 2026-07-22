@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { Redirect, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View, ViewStyle } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View, ViewStyle } from "react-native";
 
 import { ApprovalsTab } from "@/components/manager/ApprovalsTab";
 import { AttendanceTab } from "@/components/manager/AttendanceTab";
@@ -31,6 +31,11 @@ import { EMPTY_ORG, OrgTree, allowedBranchIds, resolveScope, subscribeOrgTree } 
 type TabKey = "dashboard" | "attendance" | "dtr" | "schedules" | "employees" | "memo" | "org" | "payroll" | "finalpay" | "reports" | "documents" | "approvals" | "leaves" | "requests" | "devices" | "audit";
 type MdIcon = React.ComponentProps<typeof MaterialCommunityIcons>["name"];
 type NotifItem = { key: TabKey; label: string; sub: string; count: number; icon: MdIcon };
+
+// Web-only CSS transition so the sidebar width + toggle position ease smoothly.
+const webTransition = (Platform.OS === "web"
+  ? ({ transitionProperty: "width, left", transitionDuration: "220ms", transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)" } as unknown as ViewStyle)
+  : null);
 
 const TABS: { key: TabKey; label: string; icon: MdIcon; title: string; subtitle: string }[] = [
   { key: "dashboard", label: "Dashboard", icon: "view-dashboard-outline", title: "Dashboard", subtitle: "Today's operations and workforce analytics at a glance" },
@@ -99,6 +104,8 @@ export default function ManagerPortal() {
   const [brandFilter, setBrandFilter] = useState<string | null>(null);
   const [branchFilter, setBranchFilter] = useState<string | null>(null);
   const [openSel, setOpenSel] = useState<null | "company" | "brand" | "branch">(null);
+  // Collapse the wide sidebar to an icon-only rail.
+  const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => subscribePendingLeaves((l) => setPendingCount(l.length), () => setPendingCount(0)), []);
   useEffect(
@@ -194,6 +201,26 @@ export default function ManagerPortal() {
   const renderNavButton = (t: (typeof TABS)[number]) => {
     const isActive = t.key === tab;
     const count = badgeFor(t.key);
+    // Collapsed wide sidebar: icon-only, centered, with a small count dot.
+    if (wide && collapsed) {
+      return (
+        <Pressable
+          key={t.key}
+          style={[styles.navBtnIcon, isActive && styles.navBtnIconActive]}
+          onPress={() => setTab(t.key)}
+          accessibilityLabel={t.label}
+          // @ts-expect-error react-native-web forwards `title` → native tooltip on hover
+          title={t.label}
+        >
+          <MaterialCommunityIcons name={t.icon} size={21} color={isActive ? Colors.primary : "rgba(247,245,240,0.82)"} />
+          {count > 0 && (
+            <View style={styles.countDot}>
+              <Text style={styles.countDotText}>{count > 9 ? "9+" : count}</Text>
+            </View>
+          )}
+        </Pressable>
+      );
+    }
     return (
       <Pressable
         key={t.key}
@@ -253,13 +280,25 @@ export default function ManagerPortal() {
           colors={["#5E6F3F", "#4F5D3A"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={styles.sidebar}
+          style={[styles.sidebar, collapsed && styles.sidebarCollapsed, webTransition]}
         >
-          <View style={styles.brandHeader}>
-            <Text style={styles.brandMark}>HRIS</Text>
-            <Text style={styles.brandCaption}>Workforce Portal</Text>
-          </View>
+          {!collapsed && (
+            <View style={styles.brandHeader}>
+              <View style={styles.grow}>
+                <Text style={styles.brandMark}>HRIS</Text>
+                <Text style={styles.brandCaption}>Workforce Portal</Text>
+              </View>
+            </View>
+          )}
+          {collapsed && <View style={styles.brandHeaderSpacer} />}
 
+          {collapsed ? (
+            <View style={styles.orgAvatarRail}>
+              <View style={styles.orgAvatar}>
+                <Text style={styles.orgAvatarText}>{companyInitial}</Text>
+              </View>
+            </View>
+          ) : (
           <View style={styles.orgCard}>
             <View style={styles.orgRow}>
               <View style={styles.orgAvatar}>
@@ -323,23 +362,42 @@ export default function ManagerPortal() {
               }}
             />
           </View>
+          )}
 
-          <ScrollView style={styles.nav} contentContainerStyle={styles.navContent} showsVerticalScrollIndicator={false}>
+          <ScrollView style={styles.nav} contentContainerStyle={[styles.navContent, collapsed && styles.navContentCollapsed]} showsVerticalScrollIndicator={false}>
             {NAV_GROUPS.map((g, gi) => {
               const keys = g.keys.filter(isTabVisible);
               if (keys.length === 0) return null;
               return (
-                <View key={gi} style={gi > 0 ? styles.navGroup : undefined}>
-                  {g.label ? <Text style={styles.navGroupLabel}>{g.label}</Text> : null}
+                <View key={gi} style={gi > 0 ? (collapsed ? styles.navGroupCollapsed : styles.navGroup) : undefined}>
+                  {g.label && !collapsed ? <Text style={styles.navGroupLabel}>{g.label}</Text> : null}
                   {keys.map((k) => renderNavButton(TABS.find((t) => t.key === k)!))}
                 </View>
               );
             })}
           </ScrollView>
-          {userBlock}
+          {collapsed ? (
+            <View style={styles.sideUserCollapsed}>
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>{initials}</Text>
+              </View>
+              <Pressable
+                style={styles.logoutIcon}
+                onPress={logout}
+                accessibilityLabel="Log out"
+                // @ts-expect-error react-native-web forwards `title` → native tooltip
+                title="Log out"
+              >
+                <MaterialCommunityIcons name="logout-variant" size={19} color="rgba(247,245,240,0.75)" />
+              </Pressable>
+            </View>
+          ) : (
+            userBlock
+          )}
         </LinearGradient>
         <View style={styles.main}>
           <View style={styles.topbar}>
+            <View style={styles.topbarInner}>
             <View style={styles.topIcon}>
               <MaterialCommunityIcons name={active.icon} size={22} color={Colors.primary} />
             </View>
@@ -375,11 +433,24 @@ export default function ManagerPortal() {
               )}
               <NotifBell items={notifItems} variant="light" onNavigate={setTab} />
             </View>
+            </View>
           </View>
           <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
             {content}
           </ScrollView>
         </View>
+
+        {/* Collapse/expand handle — overlay straddling the sidebar's right edge,
+            at the HRIS wordmark level. Rendered last so nothing clips it. */}
+        <Pressable
+          style={[styles.edgeToggle, { left: (collapsed ? 76 : 256) - 13 }, webTransition]}
+          onPress={() => setCollapsed((c) => !c)}
+          accessibilityLabel={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          // @ts-expect-error react-native-web forwards `title` → native tooltip
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          <MaterialCommunityIcons name={collapsed ? "chevron-right" : "chevron-left"} size={18} color={Colors.primary} />
+        </Pressable>
       </View>
     );
   }
@@ -530,10 +601,36 @@ function SidebarSelect({
 const styles = StyleSheet.create({
   // Brand wordmark header at the top of the sidebar.
   brandHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
     paddingHorizontal: 22,
     paddingTop: 24,
     paddingBottom: 16,
   },
+  // Collapsed rail: no brand wordmark (the org avatar below carries identity); just
+  // clear the space taken by the floating edge toggle so nothing sits under it.
+  brandHeaderSpacer: { height: 58 },
+  // Collapse handle straddling the sidebar's right border, vertically centered.
+  edgeToggle: {
+    position: "absolute",
+    top: 27,
+    width: 26,
+    height: 34,
+    borderRadius: 8,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 100,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 6,
+  },
+  orgAvatarRail: { alignItems: "center", paddingVertical: 6, marginBottom: 6 },
   brandMark: { color: Colors.textOnDark, fontFamily: "Georgia", fontSize: 26, fontWeight: "700", letterSpacing: 0.5 },
   brandCaption: {
     marginTop: 2,
@@ -600,9 +697,34 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.darkSurface,
     flexDirection: "column",
   },
+  sidebarCollapsed: { width: 76 },
   nav: { flex: 1 },
   navContent: { padding: 12 },
+  navContentCollapsed: { paddingHorizontal: 8, paddingVertical: 12, alignItems: "center" },
   navGroup: { marginTop: 16, gap: 2 },
+  navGroupCollapsed: { marginTop: 10, gap: 4, alignItems: "center" },
+  navBtnIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  navBtnIconActive: { backgroundColor: Colors.textOnDark },
+  countDot: {
+    position: "absolute",
+    top: 5,
+    right: 5,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+    backgroundColor: Colors.danger,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  countDotText: { color: "#fff", fontSize: 9, fontWeight: "800" },
   navGroupLabel: {
     fontSize: 10,
     fontWeight: "800",
@@ -645,6 +767,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 11,
   },
+  sideUserCollapsed: {
+    borderTopWidth: 1,
+    borderTopColor: "rgba(247,245,240,0.1)",
+    paddingVertical: 14,
+    alignItems: "center",
+    gap: 12,
+  },
+  logoutIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(247,245,240,0.08)",
+  },
   avatar: {
     width: 38,
     height: 38,
@@ -675,13 +812,13 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.hairline,
     paddingHorizontal: 36,
     paddingVertical: 20,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 16,
     // Sit above the content ScrollView so the notifications dropdown floats over it.
     position: "relative",
     zIndex: 20,
   },
+  // Inner row capped + centered to match the content column, so the header and
+  // page content stay aligned and the reclaimed collapse space splits evenly.
+  topbarInner: { flexDirection: "row", alignItems: "center", gap: 16, width: "100%", maxWidth: 1080, alignSelf: "center" },
   topIcon: {
     width: 46,
     height: 46,
@@ -768,7 +905,7 @@ const styles = StyleSheet.create({
   notifEmpty: { alignItems: "center", gap: 8, paddingVertical: 26 },
   notifEmptyText: { fontSize: 13, color: Colors.textFaint, fontWeight: "600" },
 
-  container: { maxWidth: 1080, width: "100%", paddingHorizontal: 36, paddingTop: 28, paddingBottom: 60 },
+  container: { maxWidth: 1080, width: "100%", alignSelf: "center", paddingHorizontal: 36, paddingTop: 28, paddingBottom: 60 },
 
   // Mobile
   mobileBar: {

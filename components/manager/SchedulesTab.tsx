@@ -525,19 +525,17 @@ export function SchedulesTab({ managerName, allowed }: { managerName: string; al
                   <View style={styles.breakRow}>
                     <MaterialCommunityIcons name="silverware-fork-knife" size={18} color={Colors.textMuted} />
                     <TextInput
-                      style={[styles.timeInput, noBreak && styles.disabled, webNoOutline]}
+                      style={[styles.timeInput, webNoOutline]}
                       value={sched.breakStart ?? ""}
-                      editable={!noBreak}
-                      onChangeText={(t) => setBreak({ breakStart: t })}
+                      onChangeText={(t) => setBreak({ breakStart: t, ...(sched.breakEnd == null ? { breakEnd: "13:00" } : null) })}
                       placeholder="12:00"
                       placeholderTextColor={Colors.textPlaceholder}
                     />
                     <Text style={styles.dash}>–</Text>
                     <TextInput
-                      style={[styles.timeInput, noBreak && styles.disabled, webNoOutline]}
+                      style={[styles.timeInput, webNoOutline]}
                       value={sched.breakEnd ?? ""}
-                      editable={!noBreak}
-                      onChangeText={(t) => setBreak({ breakEnd: t })}
+                      onChangeText={(t) => setBreak({ breakEnd: t, ...(sched.breakStart == null ? { breakStart: "12:00" } : null) })}
                       placeholder="13:00"
                       placeholderTextColor={Colors.textPlaceholder}
                     />

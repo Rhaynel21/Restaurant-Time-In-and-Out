@@ -1,0 +1,25 @@
+rules_version = '2';
+
+// Qui / Kitchen-In-And-Out — Firebase Storage rules.
+// Every user of the portal is a trusted, signed-in employee, so files are
+// readable/writable by any authenticated user. 201 documents live under
+// employee-docs/{employeeId}/…; profile photos under employee-photos/{employeeId}/…
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Employee 201-file documents.
+    match /employee-docs/{employeeId}/{fileName} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Employee profile photos.
+    match /employee-photos/{employeeId}/{fileName} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Any other app upload (kept auth-gated).
+    match /{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

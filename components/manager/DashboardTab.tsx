@@ -192,9 +192,9 @@ export function DashboardTab({
     try {
       await saveAttendanceAlertSettings(alertSettings, managerName);
       const result = await sendAttendanceAlertNow(alertCompanyId);
-      setAlertMessage(result.abnormalBranches === 0
-        ? "No low-attendance branches found. No SMS was sent."
-        : `Sent ${result.sent} SMS alert${result.sent === 1 ? "" : "s"} covering ${result.abnormalBranches} branch${result.abnormalBranches === 1 ? "" : "es"}.`);
+      setAlertMessage(result.sent > 0
+        ? `Sent ${result.sent} SMS${result.sent === 1 ? "" : "s"}${result.abnormalBranches > 0 ? ` · ${result.abnormalBranches} low-attendance branch${result.abnormalBranches === 1 ? "" : "es"}` : " · status report (all branches OK)"}.`
+        : "No SMS sent — add a recipient (or all were already notified today).");
     } catch (e) {
       const message = e instanceof Error ? e.message : "unknown error";
       setAlertMessage(message.toLowerCase().includes("internal")
@@ -279,6 +279,26 @@ export function DashboardTab({
     laborCost?.manualRevenue != null ? "manual" : posNet > 0 ? "pos" : null;
   const ratioPct = laborTotal > 0 && revenue ? laborCostRatioPct(laborTotal, revenue) : null;
   const verdict = ratioPct != null ? ratioVerdict(ratioPct) : null;
+
+  // Top performers — most hours logged over the last 7 days (from real punches,
+  // overnight-aware), days present as the tiebreaker.
+  const topPerformers = useMemo(() => {
+    const byEmp = new Map<string, { name: string; branch: string; minutes: number; days: Set<string> }>();
+    for (const r of week) {
+      if (!inScope(r.branchId, allowed) || !r.checkOutAt) continue;
+      let mins = Math.round((r.checkOutAt.getTime() - r.checkInAt.getTime()) / 60000);
+      if (mins < 0) mins += 24 * 60; // overnight
+      mins = Math.min(Math.max(0, mins), 16 * 60);
+      const cur = byEmp.get(r.employeeId) ?? { name: r.employeeName, branch: r.branchName, minutes: 0, days: new Set<string>() };
+      cur.minutes += mins;
+      cur.days.add(`${r.checkInAt.getFullYear()}-${r.checkInAt.getMonth()}-${r.checkInAt.getDate()}`);
+      byEmp.set(r.employeeId, cur);
+    }
+    return [...byEmp.values()]
+      .map((e) => ({ name: e.name, branch: e.branch, minutes: e.minutes, days: e.days.size }))
+      .sort((a, b) => b.minutes - a.minutes || b.days - a.days)
+      .slice(0, 3);
+  }, [week, allowed]);
 
   // Distinct headcount per branch, today — a live breakdown the roster-based
   // Workforce Analytics section below does not show.
@@ -388,8 +408,8 @@ export function DashboardTab({
         <View style={styles.alertHead}>
           <MaterialCommunityIcons name="message-alert-outline" size={20} color={Colors.primary} />
           <View style={styles.grow}>
-            <Text style={styles.alertTitle}>Attendance abnormality SMS</Text>
-            <Text style={styles.alertSub}>Semaphore sends one daily alert listing every branch below the minimum present headcount.</Text>
+            <Text style={styles.alertTitle}>Daily operations SMS</Text>
+            <Text style={styles.alertSub}>Semaphore sends a daily digest: attendance vs the minimum present headcount, pending approvals (leave + DTR/OT), and any offline scanner.</Text>
           </View>
           <Pressable
             style={[styles.alertToggle, alertSettings.enabled && styles.alertToggleOn]}
@@ -517,6 +537,30 @@ export function DashboardTab({
           </View>
         )}
       </Card>
+
+      {topPerformers.length > 0 && (
+        <Card style={styles.perfCard}>
+          <View style={styles.perfHead}>
+            <MaterialCommunityIcons name="trophy-outline" size={18} color={Colors.primary} />
+            <Text style={styles.perfTitle}>Top Performers</Text>
+            <Text style={styles.perfPeriod}>most hours · last 7 days</Text>
+          </View>
+          {topPerformers.map((p, i) => (
+            <View key={p.name + i} style={[styles.perfRow, i > 0 && styles.perfRowBorder]}>
+              <View style={[styles.perfRank, i === 0 ? styles.rankGold : i === 1 ? styles.rankSilver : styles.rankBronze]}>
+                <Text style={[styles.perfRankText, i === 0 && styles.rankTextDark]}>{i + 1}</Text>
+              </View>
+              <View style={styles.perfMain}>
+                <Text style={styles.perfName} numberOfLines={1}>{p.name}</Text>
+                <Text style={styles.perfSub} numberOfLines={1}>
+                  {p.branch}{p.branch ? " · " : ""}{p.days} day{p.days === 1 ? "" : "s"} present
+                </Text>
+              </View>
+              <Text style={styles.perfHours}>{Math.floor(p.minutes / 60)}h {p.minutes % 60}m</Text>
+            </View>
+          ))}
+        </Card>
+      )}
 
       <View style={styles.chartRow}>
         <View style={styles.chartCard}>
@@ -647,6 +691,24 @@ const styles = StyleSheet.create({
   analyticsSub: { fontSize: 13, fontWeight: "500", color: Colors.textFaint, marginTop: 3 },
 
   insightCard: { marginBottom: 18 },
+
+  // Top performers
+  perfCard: { marginBottom: 18 },
+  perfHead: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 },
+  perfTitle: { flex: 1, fontSize: 14, fontWeight: "800", color: Colors.textPrimary },
+  perfPeriod: { fontSize: 11, fontWeight: "700", color: Colors.textFaint, textTransform: "uppercase", letterSpacing: 0.4 },
+  perfRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10 },
+  perfRowBorder: { borderTopWidth: 1, borderTopColor: Colors.hairline },
+  perfRank: { width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: Colors.warmSurface },
+  rankGold: { backgroundColor: "#F4C542" },
+  rankSilver: { backgroundColor: "#D7D7DB" },
+  rankBronze: { backgroundColor: "#E0A87A" },
+  perfRankText: { fontSize: 13, fontWeight: "800", color: "#fff" },
+  rankTextDark: { color: "#5A4A12" },
+  perfMain: { flex: 1, minWidth: 0 },
+  perfName: { fontSize: 14, fontWeight: "700", color: Colors.textPrimary },
+  perfSub: { fontSize: 12, color: Colors.textFaint, marginTop: 1 },
+  perfHours: { fontSize: 14, fontWeight: "800", color: Colors.primary, fontVariant: ["tabular-nums"] },
   insightHead: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 14 },
   insightTitle: { flex: 1, fontSize: 14, fontWeight: "800", color: Colors.textPrimary },
   insightMonth: { fontSize: 12, fontWeight: "800", color: Colors.textFaint, fontVariant: ["tabular-nums"] },

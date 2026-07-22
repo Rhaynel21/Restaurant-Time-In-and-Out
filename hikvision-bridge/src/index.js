@@ -8,11 +8,10 @@
 // each scan is a clock-IN or clock-OUT (based on the employee's open record),
 // and mirror it into the `attendance` collection the app already reads.
 const config = require("./config");
-const { fetchEvents, normalizeEvent, ping } = require("./hikvision");
+const { fetchEvents, normalizeEvent } = require("./hikvision");
 const store = require("./firestore");
 const state = require("./state");
 const tamper = require("./tamper");
-const simulate = require("./simulate");
 
 const seenSet = new Set();
 let lastTimeMs = null;
@@ -156,10 +155,7 @@ async function startDeviceMode() {
   log(`Interval: ${config.pollIntervalMs}ms`);
   log(lastTimeMs ? `Resuming from ${new Date(lastTimeMs).toISOString()}` : "Fresh start (today)");
 
-  let polling = false;
   const tick = async () => {
-    if (polling) return; // never overlap polls
-    polling = true;
     try {
       await poll();
       consecutiveFails = 0;
@@ -174,51 +170,31 @@ async function startDeviceMode() {
       if (consecutiveFails >= config.offlineAfterFails) {
         await reportHealth(false, { lastError: String(err.message).slice(0, 200) });
       }
-    } finally {
-      polling = false;
     }
   };
 
-  await tick();
-  setInterval(tick, config.pollIntervalMs);
+  const runLoop = async () => {
+    const startedAt = Date.now();
+    await tick();
+    // Maintain the requested start-to-start cadence. If a device request takes
+    // longer than the interval, poll again immediately after it completes.
+    const delay = Math.max(0, config.pollIntervalMs - (Date.now() - startedAt));
+    setTimeout(runLoop, delay);
+  };
+
+  await runLoop();
 }
 
-// Live simulation loop (no device needed) — keeps the app moving.
-async function startSimulateMode(reason) {
-  log("◆ Mode:    SIMULATE (no device — generating live punches)");
-  if (reason) log(`Reason:   ${reason}`);
-  await simulate.run(store, log, config);
-}
-
-// Decide which mode to run. SIMULATE=on/off forces it; otherwise we probe the
-// device and fall back to simulation when it isn't reachable — so `npm run start`
-// brings the system live either way.
+// Start only in real-device mode. Connection failures are reported as device
+// outages and retried; the bridge never fabricates attendance records.
 async function main() {
   log("Qui · attendance bridge starting");
 
-  if (config.simulate === "on") {
-    return startSimulateMode("SIMULATE=1 (forced)");
-  }
-
-  if (config.simulate === "off") {
-    if (!deviceConfigured) {
-      log("! SIMULATE=0 but no device configured (set HIK_HOST/HIK_USER/HIK_PASS in .env).");
-      process.exit(1);
-    }
-    return startDeviceMode();
-  }
-
-  // auto
   if (!deviceConfigured) {
-    return startSimulateMode("no device configured in .env");
+    throw new Error("No Hikvision device configured; set HIK_HOST, HIK_USER, and HIK_PASS in .env.");
   }
-  try {
-    log(`Probing device at ${config.deviceBaseUrl} …`);
-    await ping();
-    return startDeviceMode();
-  } catch (err) {
-    return startSimulateMode(`device unreachable (${String(err.message).slice(0, 80)})`);
-  }
+
+  return startDeviceMode();
 }
 
 // Throttled heartbeat: write at most once a minute, or immediately whenever the
