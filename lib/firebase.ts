@@ -2,6 +2,7 @@ import ReactNativeAsyncStorage from "@react-native-async-storage/async-storage";
 import { getApp, getApps, initializeApp } from "firebase/app";
 import { Auth, getAuth, initializeAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+import { getFunctions } from "firebase/functions";
 import { getStorage } from "firebase/storage";
 import { Platform } from "react-native";
 
@@ -45,3 +46,4 @@ function resolveAuth(): Auth {
 export const db = getFirestore(app);
 export const auth = resolveAuth();
 export const storage = getStorage(app);
+export const functions = getFunctions(app);

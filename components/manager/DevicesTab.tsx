@@ -1,8 +1,8 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
-import { Badge, Card, EmptyState, SectionTitle } from "@/components/manager/ui";
+import { Badge, Button, Card, EmptyState, SectionTitle } from "@/components/manager/ui";
 import { ManagerColors as Colors } from "@/constants/theme";
 import {
   DeviceAlarm,
@@ -86,9 +86,7 @@ export function DevicesTab() {
                 <Text style={styles.sub}>{a.deviceName || a.deviceId} · {timeAgo(a.at)}</Text>
               </View>
               {!a.acknowledged && (
-                <Pressable style={styles.ackBtn} disabled={busy === a.id} onPress={() => ack(a.id)}>
-                  <Text style={styles.ackText}>{busy === a.id ? "…" : "Acknowledge"}</Text>
-                </Pressable>
+                <Button label="Acknowledge" variant="subtle" size="sm" loading={busy === a.id} onPress={() => ack(a.id)} />
               )}
             </View>
           </Card>
@@ -107,13 +105,4 @@ const styles = StyleSheet.create({
   title: { fontWeight: "700", fontSize: 15, color: Colors.textPrimary },
   sub: { color: Colors.textFaint, fontSize: 13 },
   sev: { fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.5 },
-  ackBtn: {
-    backgroundColor: Colors.warmSurface,
-    borderWidth: 1,
-    borderColor: Colors.warmBorder,
-    borderRadius: 9,
-    paddingHorizontal: 13,
-    paddingVertical: 8,
-  },
-  ackText: { color: Colors.primaryDark, fontWeight: "700", fontSize: 13 },
 });

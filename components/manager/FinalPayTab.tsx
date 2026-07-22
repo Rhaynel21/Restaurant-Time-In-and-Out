@@ -1,12 +1,12 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Card, EmptyState, SectionTitle, Select } from "@/components/manager/ui";
 import { ManagerColors as Colors } from "@/constants/theme";
 import { getAttendanceForMonth } from "@/lib/attendance";
 import { buildDtr } from "@/lib/dtr";
-import { EmployeeMaster, subscribeEmployeeMasters } from "@/lib/hr";
+import { EmployeeMaster, isPayrollExcluded, subscribeEmployeeMasters } from "@/lib/hr";
 import { SilBalance, silBalance } from "@/lib/leave-benefits";
 import { AttendanceRequest, subscribeAllRequests } from "@/lib/attendance-requests";
 import { subscribeAllLeaves, LeaveRequest } from "@/lib/leaves";
@@ -83,7 +83,7 @@ export function FinalPayTab({ allowed, companyId }: { allowed: Set<string> | nul
   useEffect(() => subscribePayrollFormula(companyId, setFormula, () => {}), [companyId]);
 
   const scoped = useMemo(
-    () => employees.filter((e) => inScope(e.branchId, allowed)).sort((a, b) => a.fullName.localeCompare(b.fullName)),
+    () => employees.filter((e) => inScope(e.branchId, allowed) && !isPayrollExcluded(e)).sort((a, b) => a.fullName.localeCompare(b.fullName)),
     [employees, allowed],
   );
   const selected = scoped.find((e) => e.employeeId === selId) ?? null;
@@ -281,17 +281,23 @@ export function FinalPayTab({ allowed, companyId }: { allowed: Set<string> | nul
         {scoped.length === 0 ? (
           <Text style={styles.muted}>Loading employees…</Text>
         ) : (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-            {scoped.map((e) => {
-              const active = e.employeeId === selId;
-              return (
-                <Pressable key={e.employeeId} style={[styles.chip, active && styles.chipOn]} onPress={() => { setSelId(e.employeeId); setResult(null); }}>
-                  <Text style={[styles.chipText, active && styles.chipTextOn]}>{e.fullName}</Text>
-                  <Text style={[styles.chipSub, active && styles.chipTextOn]}>{e.status === "inactive" ? "separated" : e.branchName ?? ""}</Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+          <View style={styles.empBlock}>
+            <Text style={styles.label}>Employee</Text>
+            <Select
+              value={selId}
+              searchable
+              placeholder="Search & select employee…"
+              width={300}
+              options={scoped.map((e) => ({
+                value: e.employeeId,
+                label: e.status === "inactive" ? `${e.fullName} · separated` : e.fullName,
+              }))}
+              onChange={(v) => {
+                setSelId(v);
+                setResult(null);
+              }}
+            />
+          </View>
         )}
         <View style={styles.controls}>
           <View>
@@ -479,12 +485,7 @@ function html2316(r: Result): string {
 
 const styles = StyleSheet.create({
   muted: { color: Colors.textFaint, fontSize: 13 },
-  chips: { flexDirection: "row", gap: 8, paddingBottom: 4 },
-  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, backgroundColor: Colors.warmSurface, borderWidth: 1, borderColor: Colors.warmBorder, minWidth: 120 },
-  chipOn: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  chipText: { fontSize: 13, fontWeight: "700", color: Colors.textPrimary },
-  chipSub: { fontSize: 11, color: Colors.textFaint, marginTop: 1 },
-  chipTextOn: { color: "#fff" },
+  empBlock: { marginBottom: 14 },
 
   controls: { flexDirection: "row", alignItems: "flex-end", gap: 12, flexWrap: "wrap", marginTop: 14 },
   label: { fontSize: 12, fontWeight: "700", color: Colors.textBody, marginBottom: 8 },

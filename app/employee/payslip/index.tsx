@@ -15,7 +15,8 @@ import { EmployeeMaster, subscribeEmployeeMaster } from "@/lib/hr";
 import { LeaveRequest, subscribeMyLeaves } from "@/lib/leaves";
 import { loanBalanceAfter, loanDeductionForMonth } from "@/lib/loans";
 import { subscribePayrollFormula } from "@/lib/payroll-settings";
-import { DEFAULT_FORMULA, PayBasis, PayFormula, PayInputs, Payslip as PayslipData, computePayslip, peso } from "@/lib/ph-payroll";
+import { PayrollRun, subscribeCompanyRuns } from "@/lib/payroll-run";
+import { DEFAULT_FORMULA, PayBasis, PayFormula, PayInputs, Payslip as PayslipData, computePayslip, payPeriods, peso } from "@/lib/ph-payroll";
 import { getSchedule } from "@/lib/schedules";
 
 const INK = "#141414";
@@ -35,6 +36,7 @@ export default function EmployeePayslip() {
   const [month, setMonth] = useState(ym(new Date()));
   const [slip, setSlip] = useState<PayslipData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [runs, setRuns] = useState<PayrollRun[]>([]);
 
   const [myLeaves, setMyLeaves] = useState<LeaveRequest[]>([]);
   const [myRequests, setMyRequests] = useState<AttendanceRequest[]>([]);
@@ -55,6 +57,10 @@ export default function EmployeePayslip() {
 
   useEffect(
     () => subscribePayrollFormula(master?.companyId ?? null, setFormula, () => {}),
+    [master?.companyId],
+  );
+  useEffect(
+    () => subscribeCompanyRuns(master?.companyId ?? null, setRuns, () => setRuns([])),
     [master?.companyId],
   );
 
@@ -106,6 +112,13 @@ export default function EmployeePayslip() {
     const [y, mo] = month.split("-").map(Number);
     return new Date(y, mo - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
   }, [month]);
+  const released = useMemo(() => {
+    const [y, mo] = month.split("-").map(Number);
+    const required = payPeriods(formula, y, mo - 1);
+    return required.length > 0 && required.every((p) =>
+      runs.some((r) => r.period === month && r.periodKey === p.key && r.status === "released"),
+    );
+  }, [formula, month, runs]);
 
   const shiftMonth = (delta: number) => {
     const [y, mo] = month.split("-").map(Number);
@@ -136,6 +149,11 @@ export default function EmployeePayslip() {
 
         {loading ? (
           <Text style={styles.note}>Computing…</Text>
+        ) : !released ? (
+          <View style={styles.emptyCard}>
+            <MaterialCommunityIcons name="lock-clock" size={38} color={FAINT} />
+            <Text style={styles.emptyText}>Payroll for {monthLabel} has not been released yet.</Text>
+          </View>
         ) : !slip || slip.grossPay <= 0 ? (
           <View style={styles.emptyCard}>
             <MaterialCommunityIcons name="cash-remove" size={38} color={FAINT} />

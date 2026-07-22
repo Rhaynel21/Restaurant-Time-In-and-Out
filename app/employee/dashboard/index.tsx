@@ -340,6 +340,17 @@ export default function Dashboard() {
           />
         </View>
 
+        <Pressable style={styles.scheduleLink} onPress={() => router.push("/employee/checkin" as never)}>
+          <View style={styles.scheduleLinkIcon}>
+            <MaterialCommunityIcons name="map-marker-check-outline" size={20} color="#0A0A0A" />
+          </View>
+          <View style={styles.scheduleLinkText}>
+            <Text style={styles.scheduleLinkTitle}>GPS Check-in</Text>
+            <Text style={styles.scheduleLinkSub}>Clock in from your phone when away from the scanner</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#A8A8A8" />
+        </Pressable>
+
         <Pressable style={styles.scheduleLink} onPress={() => router.push("/employee/schedule" as never)}>
           <View style={styles.scheduleLinkIcon}>
             <MaterialCommunityIcons name="calendar-clock" size={20} color="#0A0A0A" />

@@ -1,13 +1,27 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { Badge, Card, EmptyState, SectionTitle } from "@/components/manager/ui";
+import {
+  BackLink,
+  Badge,
+  Button,
+  Card,
+  Chip,
+  EmptyState,
+  Field,
+  InlineMessage,
+  SearchInput,
+  SectionTitle,
+  Select,
+  SegmentedControl,
+  TextField,
+} from "@/components/manager/ui";
 import { ManagerColors as Colors } from "@/constants/theme";
 import { AccessRole } from "@/lib/auth";
-import { EmployeeMaster, blankEmployee, deleteEmployee, saveEmployeeMaster, subscribeEmployeeMasters } from "@/lib/hr";
+import { EmployeeMaster, WORKER_TYPES, blankEmployee, deleteEmployee, saveEmployeeMaster, subscribeEmployeeMasters } from "@/lib/hr";
 import { LOAN_TYPES, Loan, loanBalanceAfter, loanTypeLabel } from "@/lib/loans";
-import { OrgTree, Scope, subscribeOrgTree } from "@/lib/org";
+import { EMPTY_ORG, OrgTree, Scope, subscribeOrgTree } from "@/lib/org";
 import { peso } from "@/lib/ph-payroll";
 
 const ACCESS_ROLES: AccessRole[] = ["owner", "admin", "hr", "areaManager", "manager", "staff"];
@@ -49,7 +63,7 @@ const ROWS_OPTIONS = [10, 20, 50];
 
 export function EmployeesTab({ managerName, scope }: { managerName: string; scope: Scope }) {
   const [employees, setEmployees] = useState<EmployeeMaster[]>([]);
-  const [org, setOrg] = useState<OrgTree>({ companies: [], brands: [], branches: [] });
+  const [org, setOrg] = useState<OrgTree>(EMPTY_ORG);
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<EmployeeMaster | null>(null);
   const [isNew, setIsNew] = useState(false);
@@ -58,7 +72,6 @@ export function EmployeesTab({ managerName, scope }: { managerName: string; scop
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [page, setPage] = useState(0);
   const [viewOpen, setViewOpen] = useState(false);
-  const [statusOpen, setStatusOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [sortKey, setSortKey] = useState<ColKey>("firstName");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -69,7 +82,7 @@ export function EmployeesTab({ managerName, scope }: { managerName: string; scop
   );
 
   useEffect(() => subscribeEmployeeMasters(setEmployees, () => setEmployees([])), []);
-  useEffect(() => subscribeOrgTree(setOrg, () => setOrg({ companies: [], brands: [], branches: [] })), []);
+  useEffect(() => subscribeOrgTree(setOrg, () => setOrg(EMPTY_ORG)), []);
 
   const filtered = useMemo(() => {
     // Scope: owner sees all, admin sees their company, manager sees their branch.
@@ -187,81 +200,81 @@ export function EmployeesTab({ managerName, scope }: { managerName: string; scop
     }
   };
 
-  // ── Edit / add form ──
+  // ── Edit / add form (full page) ──
   if (editing) {
     const e = editing;
     return (
       <View>
-        <Pressable style={styles.back} onPress={cancel}>
-          <MaterialCommunityIcons name="arrow-left" size={18} color={Colors.textMuted} />
-          <Text style={styles.backText}>Back to directory</Text>
-        </Pressable>
+        <BackLink label="Back to directory" onPress={cancel} />
         <SectionTitle>{isNew ? "New Employee" : `Edit · ${e.fullName || e.employeeId}`}</SectionTitle>
 
         <Card>
           <View style={styles.formGrid}>
-            <Field label="Employee ID" grow>
-              <TextInput
-                style={[styles.input, !isNew && styles.inputLocked]}
+            <View style={styles.col}>
+              <TextField
+                label="Employee ID"
                 value={e.employeeId}
                 editable={isNew}
                 autoCapitalize="characters"
                 onChangeText={(t) => patch({ employeeId: t })}
                 placeholder="EMP-001"
-                placeholderTextColor={Colors.textPlaceholder}
               />
-            </Field>
-            <Field label="Status" grow>
-              <View style={styles.segRow}>
-                {(["active", "inactive"] as const).map((s) => (
-                  <Pressable key={s} style={[styles.seg, e.status === s && styles.segOn]} onPress={() => patch({ status: s })}>
-                    <Text style={[styles.segText, e.status === s && styles.segTextOn]}>{s}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            </Field>
+            </View>
+            <View style={styles.col}>
+              <Field label="Status">
+                <SegmentedControl
+                  options={[{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }]}
+                  value={e.status}
+                  onChange={(v) => patch({ status: v })}
+                />
+              </Field>
+            </View>
           </View>
 
           <View style={styles.formGrid}>
-            <Field label="First name" grow>
-              <TextInput style={styles.input} value={e.firstName} onChangeText={(t) => patch({ firstName: t })} placeholder="Juan" placeholderTextColor={Colors.textPlaceholder} />
-            </Field>
-            <Field label="Last name" grow>
-              <TextInput style={styles.input} value={e.lastName} onChangeText={(t) => patch({ lastName: t })} placeholder="Dela Cruz" placeholderTextColor={Colors.textPlaceholder} />
-            </Field>
+            <View style={styles.col}>
+              <TextField label="First name" value={e.firstName} onChangeText={(t) => patch({ firstName: t })} placeholder="Juan" />
+            </View>
+            <View style={styles.col}>
+              <TextField label="Last name" value={e.lastName} onChangeText={(t) => patch({ lastName: t })} placeholder="Dela Cruz" />
+            </View>
           </View>
 
           <View style={styles.formGrid}>
-            <Field label="Email" grow>
-              <TextInput style={styles.input} value={e.email} autoCapitalize="none" keyboardType="email-address" onChangeText={(t) => patch({ email: t })} placeholder="juan@qui.local" placeholderTextColor={Colors.textPlaceholder} />
-            </Field>
-            <Field label="Phone" grow>
-              <TextInput style={styles.input} value={e.phone} keyboardType="phone-pad" onChangeText={(t) => patch({ phone: t })} placeholder="0917 000 0000" placeholderTextColor={Colors.textPlaceholder} />
-            </Field>
+            <View style={styles.col}>
+              <TextField label="Email" value={e.email} autoCapitalize="none" keyboardType="email-address" onChangeText={(t) => patch({ email: t })} placeholder="juan@qui.local" />
+            </View>
+            <View style={styles.col}>
+              <TextField label="Phone" value={e.phone} keyboardType="phone-pad" onChangeText={(t) => patch({ phone: t })} placeholder="0917 000 0000" />
+            </View>
           </View>
 
           <View style={styles.formGrid}>
-            <Field label="Position" grow>
-              <TextInput style={styles.input} value={e.position} onChangeText={(t) => patch({ position: t })} placeholder="Line Cook" placeholderTextColor={Colors.textPlaceholder} />
-            </Field>
-            <Field label="Department" grow>
-              <TextInput style={styles.input} value={e.department} onChangeText={(t) => patch({ department: t })} placeholder="Kitchen" placeholderTextColor={Colors.textPlaceholder} />
-            </Field>
+            <View style={styles.col}>
+              <TextField label="Position" value={e.position} onChangeText={(t) => patch({ position: t })} placeholder="Line Cook" />
+            </View>
+            <View style={styles.col}>
+              <TextField label="Department" value={e.department} onChangeText={(t) => patch({ department: t })} placeholder="Kitchen" />
+            </View>
           </View>
 
           <Field label="Access role">
-            <View style={styles.segRow}>
+            <View style={styles.chips}>
               {ACCESS_ROLES.map((r) => (
-                <Pressable key={r} style={[styles.seg, e.accessRole === r && styles.segOn]} onPress={() => patch({ accessRole: r })}>
-                  <Text style={[styles.segText, e.accessRole === r && styles.segTextOn]}>{r}</Text>
-                </Pressable>
+                <Chip key={r} label={r} active={e.accessRole === r} onPress={() => patch({ accessRole: r })} />
               ))}
             </View>
           </Field>
 
-          {e.accessRole === "owner" && (
-            <Text style={styles.scopeNote}>Owner sees every company, brand, and branch.</Text>
-          )}
+          <Field label="Employment type" hint={e.workerType === "agency" ? "Agency Personnel are recorded on timekeeping only — excluded from payroll, payslips, bank files, and government reports." : undefined}>
+            <View style={styles.chips}>
+              {WORKER_TYPES.map((t) => (
+                <Chip key={t.value} label={t.label} active={e.workerType === t.value} onPress={() => patch({ workerType: t.value })} />
+              ))}
+            </View>
+          </Field>
+
+          {e.accessRole === "owner" && <Text style={styles.scopeNote}>Owner sees every company, brand, and branch.</Text>}
 
           {(e.accessRole === "admin" || e.accessRole === "hr") && (
             <Field label="Company (scope — all its brands & branches)">
@@ -270,13 +283,12 @@ export function EmployeesTab({ managerName, scope }: { managerName: string; scop
               ) : (
                 <View style={styles.chips}>
                   {org.companies.map((c) => (
-                    <Pressable
+                    <Chip
                       key={c.id}
-                      style={[styles.chip, e.companyId === c.id && styles.chipOn]}
+                      label={c.name}
+                      active={e.companyId === c.id}
                       onPress={() => patch({ companyId: c.id, brandId: null, branchId: null, branchName: null })}
-                    >
-                      <Text style={[styles.chipText, e.companyId === c.id && styles.chipTextOn]}>{c.name}</Text>
-                    </Pressable>
+                    />
                   ))}
                 </View>
               )}
@@ -290,13 +302,12 @@ export function EmployeesTab({ managerName, scope }: { managerName: string; scop
               ) : (
                 <View style={styles.chips}>
                   {org.branches.map((b) => (
-                    <Pressable
+                    <Chip
                       key={b.id}
-                      style={[styles.chip, e.branchId === b.id && styles.chipOn]}
+                      label={b.name}
+                      active={e.branchId === b.id}
                       onPress={() => patch({ branchId: b.id, branchName: b.name, brandId: b.brandId, companyId: b.companyId })}
-                    >
-                      <Text style={[styles.chipText, e.branchId === b.id && styles.chipTextOn]}>{b.name}</Text>
-                    </Pressable>
+                    />
                   ))}
                 </View>
               )}
@@ -313,17 +324,16 @@ export function EmployeesTab({ managerName, scope }: { managerName: string; scop
                     {org.branches.map((b) => {
                       const on = (e.branchIds ?? []).includes(b.id);
                       return (
-                        <Pressable
+                        <Chip
                           key={b.id}
-                          style={[styles.chip, on && styles.chipOn]}
+                          label={b.name}
+                          active={on}
                           onPress={() => {
                             const cur = e.branchIds ?? [];
                             const next = on ? cur.filter((x) => x !== b.id) : [...cur, b.id];
                             patch({ branchIds: next, companyId: b.companyId });
                           }}
-                        >
-                          <Text style={[styles.chipText, on && styles.chipTextOn]}>{b.name}</Text>
-                        </Pressable>
+                        />
                       );
                     })}
                   </View>
@@ -335,30 +345,26 @@ export function EmployeesTab({ managerName, scope }: { managerName: string; scop
             </Field>
           )}
 
-          <Field label="Hire date">
-            <TextInput style={styles.input} value={e.hireDate ?? ""} onChangeText={(t) => patch({ hireDate: t || null })} placeholder="YYYY-MM-DD" placeholderTextColor={Colors.textPlaceholder} />
-          </Field>
+          <TextField label="Hire date" value={e.hireDate ?? ""} onChangeText={(t) => patch({ hireDate: t || null })} placeholder="YYYY-MM-DD" />
         </Card>
 
         {/* ── Compensation & Deductions (feeds Payroll) ── */}
         <SectionTitle>Compensation &amp; Deductions</SectionTitle>
         <Card>
           <Field label="Pay basis">
-            <View style={styles.segRow}>
-              {(["daily", "hourly"] as const).map((p) => (
-                <Pressable key={p} style={[styles.seg, e.payType === p && styles.segOn]} onPress={() => patch({ payType: p })}>
-                  <Text style={[styles.segText, e.payType === p && styles.segTextOn]}>{p}</Text>
-                </Pressable>
-              ))}
-            </View>
+            <SegmentedControl
+              options={[{ value: "daily", label: "Daily" }, { value: "hourly", label: "Hourly" }]}
+              value={e.payType}
+              onChange={(v) => patch({ payType: v })}
+            />
           </Field>
           <View style={styles.formGrid}>
-            <Field label="Daily rate (₱ / day)" grow>
-              <TextInput style={styles.input} value={e.dailyRate != null ? String(e.dailyRate) : ""} keyboardType="numeric" onChangeText={setNum("dailyRate", true)} placeholder="1000" placeholderTextColor={Colors.textPlaceholder} />
-            </Field>
-            <Field label="Hourly rate (₱ / hr)" grow>
-              <TextInput style={styles.input} value={e.hourlyRate != null ? String(e.hourlyRate) : ""} keyboardType="numeric" onChangeText={setNum("hourlyRate", true)} placeholder="125" placeholderTextColor={Colors.textPlaceholder} />
-            </Field>
+            <View style={styles.col}>
+              <TextField label="Daily rate (₱ / day)" value={e.dailyRate != null ? String(e.dailyRate) : ""} keyboardType="numeric" onChangeText={setNum("dailyRate", true)} placeholder="1000" />
+            </View>
+            <View style={styles.col}>
+              <TextField label="Hourly rate (₱ / hr)" value={e.hourlyRate != null ? String(e.hourlyRate) : ""} keyboardType="numeric" onChangeText={setNum("hourlyRate", true)} placeholder="125" />
+            </View>
           </View>
           <Text style={styles.scopeNote}>
             {e.payType === "hourly"
@@ -367,27 +373,25 @@ export function EmployeesTab({ managerName, scope }: { managerName: string; scop
           </Text>
 
           <View style={styles.formGrid}>
-            <Field label="Taxable allowance (₱ / mo)" grow>
-              <TextInput style={styles.input} value={e.allowanceTaxable ? String(e.allowanceTaxable) : ""} keyboardType="numeric" onChangeText={setNum("allowanceTaxable", false)} placeholder="0" placeholderTextColor={Colors.textPlaceholder} />
-            </Field>
-            <Field label="De-minimis / non-taxable (₱ / mo)" grow>
-              <TextInput style={styles.input} value={e.deMinimis ? String(e.deMinimis) : ""} keyboardType="numeric" onChangeText={setNum("deMinimis", false)} placeholder="0" placeholderTextColor={Colors.textPlaceholder} />
-            </Field>
+            <View style={styles.col}>
+              <TextField label="Taxable allowance (₱ / mo)" value={e.allowanceTaxable ? String(e.allowanceTaxable) : ""} keyboardType="numeric" onChangeText={setNum("allowanceTaxable", false)} placeholder="0" />
+            </View>
+            <View style={styles.col}>
+              <TextField label="De-minimis / non-taxable (₱ / mo)" value={e.deMinimis ? String(e.deMinimis) : ""} keyboardType="numeric" onChangeText={setNum("deMinimis", false)} placeholder="0" />
+            </View>
           </View>
           <View style={styles.formGrid}>
-            <Field label="SSS loan (₱ / mo)" grow>
-              <TextInput style={styles.input} value={e.sssLoan ? String(e.sssLoan) : ""} keyboardType="numeric" onChangeText={setNum("sssLoan", false)} placeholder="0" placeholderTextColor={Colors.textPlaceholder} />
-            </Field>
-            <Field label="Pag-IBIG loan (₱ / mo)" grow>
-              <TextInput style={styles.input} value={e.pagibigLoan ? String(e.pagibigLoan) : ""} keyboardType="numeric" onChangeText={setNum("pagibigLoan", false)} placeholder="0" placeholderTextColor={Colors.textPlaceholder} />
-            </Field>
+            <View style={styles.col}>
+              <TextField label="SSS loan (₱ / mo)" value={e.sssLoan ? String(e.sssLoan) : ""} keyboardType="numeric" onChangeText={setNum("sssLoan", false)} placeholder="0" />
+            </View>
+            <View style={styles.col}>
+              <TextField label="Pag-IBIG loan (₱ / mo)" value={e.pagibigLoan ? String(e.pagibigLoan) : ""} keyboardType="numeric" onChangeText={setNum("pagibigLoan", false)} placeholder="0" />
+            </View>
           </View>
-          <Field label="Cash advance / other deduction (₱ / mo)">
-            <TextInput style={styles.input} value={e.cashAdvance ? String(e.cashAdvance) : ""} keyboardType="numeric" onChangeText={setNum("cashAdvance", false)} placeholder="0" placeholderTextColor={Colors.textPlaceholder} />
-          </Field>
+          <TextField label="Cash advance / other deduction (₱ / mo)" value={e.cashAdvance ? String(e.cashAdvance) : ""} keyboardType="numeric" onChangeText={setNum("cashAdvance", false)} placeholder="0" />
         </Card>
 
-        {/* ── Loans (amortizing — running balance auto-decrements to zero) ── */}
+        {/* ── Loans ── */}
         <SectionTitle>Loans</SectionTitle>
         <Card>
           {e.loans.length === 0 ? (
@@ -408,29 +412,25 @@ export function EmployeesTab({ managerName, scope }: { managerName: string; scop
           )}
 
           <View style={styles.loanAdd}>
-            <Text style={styles.label}>Add loan</Text>
-            <View style={styles.segRow}>
-              {LOAN_TYPES.map((t) => (
-                <Pressable key={t.value} style={[styles.seg, loanDraft.type === t.value && styles.segOn]} onPress={() => setLoanDraft((d) => ({ ...d, type: t.value }))}>
-                  <Text style={[styles.segText, loanDraft.type === t.value && styles.segTextOn]}>{t.label}</Text>
-                </Pressable>
-              ))}
-            </View>
+            <Field label="Add loan">
+              <View style={styles.chips}>
+                {LOAN_TYPES.map((t) => (
+                  <Chip key={t.value} label={t.label} active={loanDraft.type === t.value} onPress={() => setLoanDraft((d) => ({ ...d, type: t.value }))} />
+                ))}
+              </View>
+            </Field>
             <View style={styles.formGrid}>
-              <Field label="Principal (₱)" grow>
-                <TextInput style={styles.input} value={loanDraft.principal ? String(loanDraft.principal) : ""} keyboardType="numeric" onChangeText={loanNum("principal")} placeholder="20000" placeholderTextColor={Colors.textPlaceholder} />
-              </Field>
-              <Field label="Monthly amortization (₱)" grow>
-                <TextInput style={styles.input} value={loanDraft.monthlyAmortization ? String(loanDraft.monthlyAmortization) : ""} keyboardType="numeric" onChangeText={loanNum("monthlyAmortization")} placeholder="1667" placeholderTextColor={Colors.textPlaceholder} />
-              </Field>
-              <Field label="Start month (YYYY-MM)" grow>
-                <TextInput style={styles.input} value={loanDraft.startMonth} onChangeText={(t) => setLoanDraft((d) => ({ ...d, startMonth: t }))} placeholder="2026-07" placeholderTextColor={Colors.textPlaceholder} />
-              </Field>
+              <View style={styles.col}>
+                <TextField label="Principal (₱)" value={loanDraft.principal ? String(loanDraft.principal) : ""} keyboardType="numeric" onChangeText={loanNum("principal")} placeholder="20000" />
+              </View>
+              <View style={styles.col}>
+                <TextField label="Monthly amortization (₱)" value={loanDraft.monthlyAmortization ? String(loanDraft.monthlyAmortization) : ""} keyboardType="numeric" onChangeText={loanNum("monthlyAmortization")} placeholder="1667" />
+              </View>
+              <View style={styles.col}>
+                <TextField label="Start month (YYYY-MM)" value={loanDraft.startMonth} onChangeText={(t) => setLoanDraft((d) => ({ ...d, startMonth: t }))} placeholder="2026-07" />
+              </View>
             </View>
-            <Pressable style={styles.addLoanBtn} onPress={addLoan}>
-              <MaterialCommunityIcons name="plus" size={18} color="#fff" />
-              <Text style={styles.addLoanText}>Add loan</Text>
-            </Pressable>
+            <Button label="Add loan" icon="plus" size="sm" onPress={addLoan} style={{ alignSelf: "flex-start" }} />
           </View>
         </Card>
 
@@ -438,41 +438,37 @@ export function EmployeesTab({ managerName, scope }: { managerName: string; scop
         <SectionTitle>Personal Details</SectionTitle>
         <Card>
           <View style={styles.formGrid}>
-            <Field label="Birth date" grow>
-              <TextInput style={styles.input} value={e.birthDate ?? ""} onChangeText={(t) => patch({ birthDate: t || null })} placeholder="YYYY-MM-DD" placeholderTextColor={Colors.textPlaceholder} />
-            </Field>
-            <Field label="Gender" grow>
-              <View style={styles.segRow}>
-                {(["male", "female", "other"] as const).map((g) => (
-                  <Pressable key={g} style={[styles.seg, e.gender === g && styles.segOn]} onPress={() => patch({ gender: e.gender === g ? "" : g })}>
-                    <Text style={[styles.segText, e.gender === g && styles.segTextOn]}>{g}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            </Field>
+            <View style={styles.col}>
+              <TextField label="Birth date" value={e.birthDate ?? ""} onChangeText={(t) => patch({ birthDate: t || null })} placeholder="YYYY-MM-DD" />
+            </View>
+            <View style={styles.col}>
+              <Field label="Gender">
+                <View style={styles.chips}>
+                  {(["male", "female", "other"] as const).map((g) => (
+                    <Chip key={g} label={g} active={e.gender === g} onPress={() => patch({ gender: e.gender === g ? "" : g })} />
+                  ))}
+                </View>
+              </Field>
+            </View>
           </View>
 
           <Field label="Civil status">
-            <View style={styles.segRow}>
+            <View style={styles.chips}>
               {(["single", "married", "widowed", "separated"] as const).map((c) => (
-                <Pressable key={c} style={[styles.seg, e.civilStatus === c && styles.segOn]} onPress={() => patch({ civilStatus: e.civilStatus === c ? "" : c })}>
-                  <Text style={[styles.segText, e.civilStatus === c && styles.segTextOn]}>{c}</Text>
-                </Pressable>
+                <Chip key={c} label={c} active={e.civilStatus === c} onPress={() => patch({ civilStatus: e.civilStatus === c ? "" : c })} />
               ))}
             </View>
           </Field>
 
-          <Field label="Address">
-            <TextInput style={[styles.input, styles.inputMultiline]} value={e.address} multiline onChangeText={(t) => patch({ address: t })} placeholder="House no., street, barangay, city, province" placeholderTextColor={Colors.textPlaceholder} />
-          </Field>
+          <TextField label="Address" value={e.address} multiline onChangeText={(t) => patch({ address: t })} placeholder="House no., street, barangay, city, province" />
 
           <View style={styles.formGrid}>
-            <Field label="Emergency contact — name" grow>
-              <TextInput style={styles.input} value={e.emergencyContactName} onChangeText={(t) => patch({ emergencyContactName: t })} placeholder="Maria Dela Cruz" placeholderTextColor={Colors.textPlaceholder} />
-            </Field>
-            <Field label="Emergency contact — phone" grow>
-              <TextInput style={styles.input} value={e.emergencyContactPhone} keyboardType="phone-pad" onChangeText={(t) => patch({ emergencyContactPhone: t })} placeholder="0917 000 0000" placeholderTextColor={Colors.textPlaceholder} />
-            </Field>
+            <View style={styles.col}>
+              <TextField label="Emergency contact — name" value={e.emergencyContactName} onChangeText={(t) => patch({ emergencyContactName: t })} placeholder="Maria Dela Cruz" />
+            </View>
+            <View style={styles.col}>
+              <TextField label="Emergency contact — phone" value={e.emergencyContactPhone} keyboardType="phone-pad" onChangeText={(t) => patch({ emergencyContactPhone: t })} placeholder="0917 000 0000" />
+            </View>
           </View>
         </Card>
 
@@ -480,47 +476,38 @@ export function EmployeesTab({ managerName, scope }: { managerName: string; scop
         <SectionTitle>Government IDs</SectionTitle>
         <Card>
           <View style={styles.formGrid}>
-            <Field label="SSS no." grow>
-              <TextInput style={styles.input} value={e.sss} onChangeText={(t) => patch({ sss: t })} placeholder="00-0000000-0" placeholderTextColor={Colors.textPlaceholder} />
-            </Field>
-            <Field label="PhilHealth no." grow>
-              <TextInput style={styles.input} value={e.philhealth} onChangeText={(t) => patch({ philhealth: t })} placeholder="00-000000000-0" placeholderTextColor={Colors.textPlaceholder} />
-            </Field>
+            <View style={styles.col}>
+              <TextField label="SSS no." value={e.sss} onChangeText={(t) => patch({ sss: t })} placeholder="00-0000000-0" />
+            </View>
+            <View style={styles.col}>
+              <TextField label="PhilHealth no." value={e.philhealth} onChangeText={(t) => patch({ philhealth: t })} placeholder="00-000000000-0" />
+            </View>
           </View>
           <View style={styles.formGrid}>
-            <Field label="Pag-IBIG no." grow>
-              <TextInput style={styles.input} value={e.pagibig} onChangeText={(t) => patch({ pagibig: t })} placeholder="0000-0000-0000" placeholderTextColor={Colors.textPlaceholder} />
-            </Field>
-            <Field label="TIN" grow>
-              <TextInput style={styles.input} value={e.tin} onChangeText={(t) => patch({ tin: t })} placeholder="000-000-000-000" placeholderTextColor={Colors.textPlaceholder} />
-            </Field>
+            <View style={styles.col}>
+              <TextField label="Pag-IBIG no." value={e.pagibig} onChangeText={(t) => patch({ pagibig: t })} placeholder="0000-0000-0000" />
+            </View>
+            <View style={styles.col}>
+              <TextField label="TIN" value={e.tin} onChangeText={(t) => patch({ tin: t })} placeholder="000-000-000-000" />
+            </View>
           </View>
           <View style={styles.formGrid}>
-            <Field label="Bank / e-wallet (for payroll)" grow>
-              <TextInput style={styles.input} value={e.bankName} onChangeText={(t) => patch({ bankName: t })} placeholder="BDO / GCash" placeholderTextColor={Colors.textPlaceholder} />
-            </Field>
-            <Field label="Account number" grow>
-              <TextInput style={styles.input} value={e.bankAccount} onChangeText={(t) => patch({ bankAccount: t })} placeholder="0000-0000-0000" placeholderTextColor={Colors.textPlaceholder} />
-            </Field>
+            <View style={styles.col}>
+              <TextField label="Bank / e-wallet (for payroll)" value={e.bankName} onChangeText={(t) => patch({ bankName: t })} placeholder="BDO / GCash" />
+            </View>
+            <View style={styles.col}>
+              <TextField label="Account number" value={e.bankAccount} onChangeText={(t) => patch({ bankAccount: t })} placeholder="0000-0000-0000" />
+            </View>
           </View>
         </Card>
 
         <View style={styles.formActions}>
-          {!isNew && (
-            <Pressable style={styles.deleteBtn} disabled={saving} onPress={remove}>
-              <MaterialCommunityIcons name="trash-can-outline" size={18} color={Colors.danger} />
-              <Text style={styles.deleteText}>Delete</Text>
-            </Pressable>
-          )}
+          {!isNew && <Button label="Delete" variant="danger" icon="trash-can-outline" onPress={remove} disabled={saving} />}
           <View style={{ flex: 1 }} />
-          <Pressable style={styles.ghostBtn} disabled={saving} onPress={cancel}>
-            <Text style={styles.ghostText}>Cancel</Text>
-          </Pressable>
-          <Pressable style={[styles.saveBtn, saving && { opacity: 0.7 }]} disabled={saving} onPress={save}>
-            <Text style={styles.saveText}>{saving ? "Saving…" : "Save"}</Text>
-          </Pressable>
+          <Button label="Cancel" variant="ghost" onPress={cancel} disabled={saving} />
+          <Button label={saving ? "Saving…" : "Save"} onPress={save} loading={saving} />
         </View>
-        {message ? <Text style={styles.message}>{message}</Text> : null}
+        {message ? <View style={{ marginTop: 12 }}><InlineMessage text={message} tone="error" /></View> : null}
         {!isNew && (
           <Text style={styles.note}>
             This manages the HR record only. Login credentials (Firebase Auth) are provisioned separately.
@@ -530,7 +517,7 @@ export function EmployeesTab({ managerName, scope }: { managerName: string; scop
     );
   }
 
-  // ── Directory (table) ──
+  // ── Directory (full-width table) ──
   const renderCell = (e: EmployeeMaster, key: ColKey) => {
     if (key === "status")
       return <Badge label={e.status === "active" ? "Active" : "Inactive"} tone={e.status === "active" ? "in" : "out"} />;
@@ -551,35 +538,23 @@ export function EmployeesTab({ managerName, scope }: { managerName: string; scop
     }
   };
 
-  const backdrop = (onPress: () => void) => (
-    <Pressable onPress={onPress} style={fixedBackdrop} />
-  );
-
-  const statusLabel = statusFilter === "all" ? "Status: All" : statusFilter === "active" ? "Active" : "Inactive";
+  const backdrop = (onPress: () => void) => <Pressable onPress={onPress} style={fixedBackdrop} />;
 
   return (
     <View>
-      {/* Toolbar */}
+      {/* Toolbar: search + column view + export + add */}
       <View style={styles.toolbar}>
-        <View style={styles.searchWrap}>
-          <MaterialCommunityIcons name="magnify" size={18} color={Colors.textFaint} />
-          <TextInput
-            style={styles.search}
-            value={search}
-            onChangeText={(t) => {
-              setSearch(t);
-              setPage(0);
-            }}
-            placeholder="Search…"
-            placeholderTextColor={Colors.textPlaceholder}
-          />
-        </View>
+        <SearchInput
+          value={search}
+          onChangeText={(t) => {
+            setSearch(t);
+            setPage(0);
+          }}
+          placeholder="Search employees…"
+        />
         <View style={styles.toolbarBtns}>
           <View style={[styles.dropWrap, viewOpen && styles.dropWrapOpen]}>
-            <Pressable style={styles.toolBtn} onPress={() => setViewOpen((v) => !v)}>
-              <MaterialCommunityIcons name="tune-variant" size={16} color={Colors.textBody} />
-              <Text style={styles.toolBtnText}>View</Text>
-            </Pressable>
+            <Button label="View" variant="ghost" size="sm" icon="tune-variant" onPress={() => setViewOpen((v) => !v)} />
             {viewOpen && (
               <>
                 {backdrop(() => setViewOpen(false))}
@@ -600,123 +575,93 @@ export function EmployeesTab({ managerName, scope }: { managerName: string; scop
             )}
           </View>
           {Platform.OS === "web" && (
-            <Pressable style={styles.toolBtn} onPress={exportExcel}>
-              <MaterialCommunityIcons name="microsoft-excel" size={16} color={Colors.success} />
-              <Text style={styles.toolBtnText}>Export Excel</Text>
-            </Pressable>
+            <Button label="Export Excel" variant="ghost" size="sm" icon="microsoft-excel" onPress={exportExcel} />
           )}
-          <Pressable style={styles.addBtnSm} onPress={startAdd}>
-            <MaterialCommunityIcons name="plus" size={20} color="#fff" />
-          </Pressable>
+          <Button label="Add" size="sm" icon="plus" onPress={startAdd} />
         </View>
       </View>
 
       {/* Filter row */}
       <View style={styles.filterRow}>
-        <View style={[styles.dropWrap, statusOpen && styles.dropWrapOpen]}>
-          <Pressable style={styles.filterBtn} onPress={() => setStatusOpen((o) => !o)}>
-            <Text style={styles.filterText}>{statusLabel}</Text>
-            <MaterialCommunityIcons name="chevron-down" size={18} color={Colors.textMuted} />
-          </Pressable>
-          {statusOpen && (
-            <>
-              {backdrop(() => setStatusOpen(false))}
-              <View style={[styles.menu, { left: 0 }]}>
-                {(["all", "active", "inactive"] as const).map((s) => (
-                  <Pressable
-                    key={s}
-                    style={styles.menuItem}
-                    onPress={() => {
-                      setStatusFilter(s);
-                      setStatusOpen(false);
-                      setPage(0);
-                    }}
-                  >
-                    <Text style={styles.menuItemText}>{s === "all" ? "All" : s === "active" ? "Active" : "Inactive"}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            </>
-          )}
-        </View>
-        {message ? <Text style={styles.errorMsg}>{message}</Text> : null}
+        <Select
+          value={statusFilter}
+          width={150}
+          options={[
+            { value: "all", label: "Status: All" },
+            { value: "active", label: "Active" },
+            { value: "inactive", label: "Inactive" },
+          ]}
+          onChange={(v) => {
+            setStatusFilter(v as "all" | "active" | "inactive");
+            setPage(0);
+          }}
+        />
       </View>
+
+      {message ? <InlineMessage text={message} tone="error" /> : null}
 
       {/* Table */}
       {total === 0 ? (
         <EmptyState icon="account-group-outline" text={employees.length ? "No matches" : "No employees yet — add your first"} />
       ) : (
         <View style={styles.tableCard}>
-          <View>
-            <View>
-              <View style={styles.theadRow}>
-                {cols.map((c) => (
-                  <Pressable key={c.key} style={[styles.th, { width: c.width }]} onPress={() => toggleSort(c.key)}>
-                    <Text style={styles.thText} numberOfLines={1}>
-                      {c.label}
-                    </Text>
-                    <MaterialCommunityIcons
-                      name={sortKey === c.key ? (sortDir === "asc" ? "menu-up" : "menu-down") : "unfold-more-horizontal"}
-                      size={14}
-                      color={sortKey === c.key ? Colors.primary : Colors.textPlaceholder}
-                    />
-                  </Pressable>
-                ))}
-                <View style={[styles.th, { width: 52 }]} />
-              </View>
-              {pageRows.map((e, i) => (
-                <View
-                  key={e.employeeId}
-                  style={[
-                    styles.tr,
-                    i < pageRows.length - 1 && styles.trBorder,
-                    rowMenuId === e.employeeId && styles.trMenuOpen,
-                  ]}
-                >
-                  {cols.map((c) => (
-                    <Pressable key={c.key} style={[styles.tdCell, { width: c.width }]} onPress={() => startEdit(e)}>
-                      {renderCell(e, c.key)}
-                    </Pressable>
-                  ))}
-                  <View style={[styles.tdCell, styles.actionsCell]}>
-                    <Pressable
-                      style={styles.dotsBtn}
-                      onPress={() => setRowMenuId((id) => (id === e.employeeId ? null : e.employeeId))}
-                    >
-                      <MaterialCommunityIcons name="dots-horizontal" size={18} color={Colors.textMuted} />
-                    </Pressable>
-                    {rowMenuId === e.employeeId && (
-                      <>
-                        {backdrop(() => setRowMenuId(null))}
-                        <View style={[styles.menu, styles.rowMenu]}>
-                          <Pressable
-                            style={styles.menuItem}
-                            onPress={() => {
-                              setRowMenuId(null);
-                              startEdit(e);
-                            }}
-                          >
-                            <MaterialCommunityIcons name="pencil-outline" size={16} color={Colors.textBody} />
-                            <Text style={styles.menuItemText}>Edit</Text>
-                          </Pressable>
-                          <Pressable
-                            style={styles.menuItem}
-                            onPress={() => {
-                              setRowMenuId(null);
-                              onDeleteRow(e);
-                            }}
-                          >
-                            <MaterialCommunityIcons name="trash-can-outline" size={16} color={Colors.danger} />
-                            <Text style={[styles.menuItemText, { color: Colors.danger }]}>Delete</Text>
-                          </Pressable>
-                        </View>
-                      </>
-                    )}
-                  </View>
-                </View>
-              ))}
-            </View>
+          <View style={styles.theadRow}>
+            {cols.map((c) => (
+              <Pressable key={c.key} style={[styles.th, { width: c.width }]} onPress={() => toggleSort(c.key)}>
+                <Text style={styles.thText} numberOfLines={1}>{c.label}</Text>
+                <MaterialCommunityIcons
+                  name={sortKey === c.key ? (sortDir === "asc" ? "menu-up" : "menu-down") : "unfold-more-horizontal"}
+                  size={14}
+                  color={sortKey === c.key ? Colors.primary : Colors.textPlaceholder}
+                />
+              </Pressable>
+            ))}
+            <View style={[styles.th, { width: 52 }]} />
           </View>
+          {pageRows.map((e, i) => (
+            <View
+              key={e.employeeId}
+              style={[styles.tr, i < pageRows.length - 1 && styles.trBorder, rowMenuId === e.employeeId && styles.trMenuOpen]}
+            >
+              {cols.map((c) => (
+                <Pressable key={c.key} style={[styles.tdCell, { width: c.width }]} onPress={() => startEdit(e)}>
+                  {renderCell(e, c.key)}
+                </Pressable>
+              ))}
+              <View style={[styles.tdCell, styles.actionsCell]}>
+                <Pressable style={styles.dotsBtn} onPress={() => setRowMenuId((id) => (id === e.employeeId ? null : e.employeeId))}>
+                  <MaterialCommunityIcons name="dots-horizontal" size={18} color={Colors.textMuted} />
+                </Pressable>
+                {rowMenuId === e.employeeId && (
+                  <>
+                    {backdrop(() => setRowMenuId(null))}
+                    <View style={[styles.menu, styles.rowMenu]}>
+                      <Pressable
+                        style={styles.menuItem}
+                        onPress={() => {
+                          setRowMenuId(null);
+                          startEdit(e);
+                        }}
+                      >
+                        <MaterialCommunityIcons name="pencil-outline" size={16} color={Colors.textBody} />
+                        <Text style={styles.menuItemText}>Edit</Text>
+                      </Pressable>
+                      <Pressable
+                        style={styles.menuItem}
+                        onPress={() => {
+                          setRowMenuId(null);
+                          onDeleteRow(e);
+                        }}
+                      >
+                        <MaterialCommunityIcons name="trash-can-outline" size={16} color={Colors.danger} />
+                        <Text style={[styles.menuItemText, { color: Colors.danger }]}>Delete</Text>
+                      </Pressable>
+                    </View>
+                  </>
+                )}
+              </View>
+            </View>
+          ))}
         </View>
       )}
 
@@ -759,107 +704,35 @@ export function EmployeesTab({ managerName, scope }: { managerName: string; scop
 
 const fixedBackdrop = { position: "fixed" as const, top: 0, left: 0, right: 0, bottom: 0, zIndex: 40 } as unknown as object;
 
-function Field({ label, grow, children }: { label: string; grow?: boolean; children: React.ReactNode }) {
-  return (
-    <View style={[styles.field, grow && styles.fieldGrow]}>
-      <Text style={styles.label}>{label}</Text>
-      {children}
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  toolbar: { flexDirection: "row", gap: 12, marginBottom: 18, flexWrap: "wrap" },
-  searchWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    flexGrow: 1,
-    flexBasis: 240,
-    height: 46,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    backgroundColor: Colors.cardSurface,
-    borderWidth: 1,
-    borderColor: Colors.hairline,
-  },
-  search: { flex: 1, fontSize: 14, color: Colors.textPrimary, outlineStyle: "none" } as object,
-  addBtn: { flexDirection: "row", alignItems: "center", gap: 8, height: 46, paddingHorizontal: 18, borderRadius: 12, backgroundColor: Colors.primary },
-  addText: { color: "#fff", fontWeight: "700", fontSize: 14 },
-
-  row: { flexDirection: "row", alignItems: "center", gap: 14 },
-  avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.primary, alignItems: "center", justifyContent: "center" },
-  avatarOff: { backgroundColor: Colors.textFaint },
-  avatarText: { color: "#fff", fontWeight: "700", fontSize: 15 },
   grow: { flex: 1, minWidth: 0 },
-  name: { fontSize: 15, fontWeight: "700", color: Colors.textPrimary },
-  idTag: { fontSize: 12, fontWeight: "600", color: Colors.textFaint },
-  sub: { fontSize: 13, color: Colors.textMuted, marginTop: 2 },
 
-  // Form
-  back: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 },
-  backText: { color: Colors.textMuted, fontWeight: "600", fontSize: 13 },
+  // Form layout
   formGrid: { flexDirection: "row", gap: 12, flexWrap: "wrap" },
-  field: { marginBottom: 14 },
-  fieldGrow: { flexGrow: 1, flexBasis: 200 },
-  label: { fontSize: 12, fontWeight: "700", color: Colors.textBody, marginBottom: 6 },
-  input: { height: 46, borderRadius: 12, borderWidth: 1, borderColor: Colors.warmBorder, backgroundColor: Colors.warmSurface, paddingHorizontal: 12, fontSize: 15, color: Colors.textPrimary, outlineStyle: "none" } as object,
-  inputMultiline: { height: 72, paddingTop: 12, textAlignVertical: "top" } as object,
-  inputLocked: { opacity: 0.6 },
-
+  col: { flexGrow: 1, flexBasis: 200, minWidth: 200 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: { paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10, backgroundColor: Colors.warmSurface, borderWidth: 1, borderColor: Colors.warmBorder },
-  chipOn: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  chipText: { fontSize: 13, fontWeight: "700", color: Colors.textPrimary },
-  chipTextOn: { color: "#fff" },
-
-  segRow: { flexDirection: "row", gap: 6 },
-  seg: { paddingHorizontal: 16, height: 40, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: Colors.warmSurface, borderWidth: 1, borderColor: Colors.warmBorder },
-  segOn: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  segText: { fontSize: 13, fontWeight: "700", color: Colors.textMuted, textTransform: "capitalize" },
-  segTextOn: { color: "#fff" },
-
-  formActions: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 4 },
-  deleteBtn: { flexDirection: "row", alignItems: "center", gap: 6, height: 46, paddingHorizontal: 16, borderRadius: 12, backgroundColor: Colors.dangerTint, borderWidth: 1, borderColor: "rgba(178,58,58,0.2)" },
-  deleteText: { color: Colors.danger, fontWeight: "700", fontSize: 14 },
-  ghostBtn: { height: 46, paddingHorizontal: 18, borderRadius: 12, backgroundColor: Colors.cardSurface, borderWidth: 1, borderColor: Colors.warmBorder, alignItems: "center", justifyContent: "center" },
-  ghostText: { color: Colors.primaryDark, fontWeight: "700", fontSize: 14 },
-  saveBtn: { height: 46, paddingHorizontal: 26, borderRadius: 12, backgroundColor: Colors.primary, alignItems: "center", justifyContent: "center" },
-  saveText: { color: "#fff", fontWeight: "700", fontSize: 14 },
-  message: { marginTop: 12, color: Colors.textMuted, fontWeight: "600", fontSize: 13 },
-  note: { marginTop: 10, color: Colors.textFaint, fontSize: 12, lineHeight: 17 },
   scopeNote: { color: Colors.textMuted, fontSize: 13, lineHeight: 18, marginBottom: 14 },
+  formActions: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 4 },
+  note: { marginTop: 10, color: Colors.textFaint, fontSize: 12, lineHeight: 17 },
+
+  // Loans
   loanRow: { flexDirection: "row", alignItems: "flex-start", gap: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.hairline },
   loanTitle: { fontSize: 14, fontWeight: "700", color: Colors.textPrimary },
   loanSub: { fontSize: 12, color: Colors.textMuted, marginTop: 2 },
   loanBal: { fontSize: 12, fontWeight: "700", color: Colors.primary, marginTop: 3 },
   loanDel: { width: 38, height: 38, borderRadius: 9, backgroundColor: Colors.dangerTint, alignItems: "center", justifyContent: "center" },
   loanAdd: { marginTop: 14 },
-  addLoanBtn: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", height: 42, paddingHorizontal: 16, borderRadius: 11, backgroundColor: Colors.primary, marginTop: 6 },
-  addLoanText: { color: "#fff", fontWeight: "700", fontSize: 14 },
 
   // Toolbar
+  toolbar: { flexDirection: "row", gap: 12, marginBottom: 16, flexWrap: "wrap", alignItems: "center" },
   toolbarBtns: { flexDirection: "row", alignItems: "center", gap: 8 },
-  toolBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    height: 40,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-    backgroundColor: Colors.cardSurface,
-    borderWidth: 1,
-    borderColor: Colors.warmBorder,
-  },
-  toolBtnText: { fontSize: 13, fontWeight: "700", color: Colors.textBody },
-  addBtnSm: { width: 40, height: 40, borderRadius: 10, backgroundColor: Colors.primary, alignItems: "center", justifyContent: "center" },
 
-  // Dropdowns
+  // Dropdowns (column view + row menu)
   dropWrap: { position: "relative" },
   dropWrapOpen: { zIndex: 50 },
   menu: {
     position: "absolute",
-    top: 46,
+    top: 42,
     minWidth: 190,
     backgroundColor: Colors.cardSurface,
     borderWidth: 1,
@@ -879,29 +752,14 @@ const styles = StyleSheet.create({
 
   // Filter row
   filterRow: { flexDirection: "row", alignItems: "center", gap: 14, marginBottom: 14, zIndex: 30 },
-  filterBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    height: 40,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-    backgroundColor: Colors.cardSurface,
-    borderWidth: 1,
-    borderColor: Colors.warmBorder,
-  },
-  filterText: { fontSize: 13, fontWeight: "600", color: Colors.textBody },
-  errorMsg: { color: Colors.danger, fontSize: 13, fontWeight: "600" },
 
   // Table
-  tableCard: { backgroundColor: Colors.cardSurface, borderRadius: 16, borderWidth: 1, borderColor: Colors.hairline },
-  theadRow: { flexDirection: "row", backgroundColor: Colors.warmSurface, borderTopLeftRadius: 16, borderTopRightRadius: 16 },
+  tableCard: { backgroundColor: Colors.cardSurface, borderRadius: 16, borderWidth: 1, borderColor: Colors.hairline, overflow: "hidden" },
+  theadRow: { flexDirection: "row", backgroundColor: Colors.warmSurface },
   th: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 14, paddingVertical: 13 },
-  thText: { fontSize: 12, fontWeight: "700", color: Colors.textSubtle, textTransform: "uppercase", letterSpacing: 0.4 },
+  thText: { fontSize: 11.5, fontWeight: "800", color: Colors.textSubtle, textTransform: "uppercase", letterSpacing: 0.5 },
   tr: { flexDirection: "row", alignItems: "center" },
   trBorder: { borderBottomWidth: 1, borderBottomColor: Colors.hairline },
-  // Lift the row whose action menu is open above the rows below it, so the
-  // absolutely-positioned Edit/Delete menu isn't painted over by later rows.
   trMenuOpen: { position: "relative", zIndex: 30 },
   tdCell: { paddingHorizontal: 14, paddingVertical: 13, justifyContent: "center" },
   cellText: { fontSize: 14, color: Colors.textPrimary },

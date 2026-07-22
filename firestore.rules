@@ -13,6 +13,12 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function periodIsLocked(branchId, period) {
+      return period is string
+        && exists(/databases/$(database)/documents/dtr_locks/$(branchId + '_' + period))
+        && get(/databases/$(database)/documents/dtr_locks/$(branchId + '_' + period)).data.locked == true;
+    }
 
     // Employee roster / 201 master — login resolves the profile from here.
     match /employees/{employeeId} {
@@ -22,7 +28,9 @@ service cloud.firestore {
 
     // Time & attendance, leave requests, schedules.
     match /attendance/{doc} {
-      allow read, write: if request.auth != null;
+      allow read: if signedIn();
+      allow create: if signedIn() && !periodIsLocked(request.resource.data.branchId, request.resource.data.period);
+      allow update, delete: if signedIn() && !periodIsLocked(resource.data.branchId, resource.data.period);
     }
     match /leaves/{doc} {
       allow read, write: if request.auth != null;
@@ -32,7 +40,13 @@ service cloud.firestore {
       allow read, write: if request.auth != null;
     }
     match /schedules/{doc} {
-      allow read, write: if request.auth != null;
+      allow read, create: if signedIn();
+      allow update: if signedIn() && (
+        resource.data.publishedLocked != true
+        || request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['publishedLocked', 'publishedBy', 'publishedAt', 'updatedBy', 'updatedAt'])
+      );
+      allow delete: if signedIn() && resource.data.publishedLocked != true;
     }
 
     // HRIS: employee 201 documents (metadata; files live in Storage).
@@ -45,9 +59,23 @@ service cloud.firestore {
       allow read, write: if request.auth != null;
     }
 
-    // Org hierarchy: Company → Brand → Branch, nested subcollections. Read on
-    // login to resolve scope; the manager portal reads brands/branches via
-    // collectionGroup, which Firestore evaluates at each doc's nested path below.
+    // Org hierarchy: Organization → Brand → Branch (+ Areas), nested subcollections,
+    // aligned to the Klicc Phase 1 data model. Read on login to resolve scope; the
+    // manager portal reads brands/branches/areas via collectionGroup, evaluated at
+    // each doc's nested path below.
+    match /organization/{orgId} {
+      allow read, write: if request.auth != null;
+      match /brands/{brandId} {
+        allow read, write: if request.auth != null;
+        match /branches/{branchId} {
+          allow read, write: if request.auth != null;
+        }
+      }
+      match /areas/{areaId} {
+        allow read, write: if request.auth != null;
+      }
+    }
+    // Legacy pre-rename org collection (kept so any old data stays reachable).
     match /companies/{companyId} {
       allow read, write: if request.auth != null;
       match /brands/{brandId} {
@@ -57,9 +85,35 @@ service cloud.firestore {
         }
       }
     }
-    // collectionGroup("brands") / collectionGroup("branches") reads.
-    match /{path=**}/brands/{brandId}   { allow read: if request.auth != null; }
+    // collectionGroup("brands"/"branches"/"areas") reads.
+    match /{path=**}/brands/{brandId}    { allow read: if request.auth != null; }
     match /{path=**}/branches/{branchId} { allow read: if request.auth != null; }
+    match /{path=**}/areas/{areaId}      { allow read: if request.auth != null; }
+
+    // Cutoff / DTR locks — freeze attendance for a branch·period before payroll.
+    match /dtr_locks/{doc} {
+      allow read, write: if request.auth != null;
+    }
+    // Payroll run lifecycle (draft → approved → released).
+    match /payroll_runs/{doc} {
+      allow read, write: if request.auth != null;
+    }
+    // Owner-insight labor cost per company·month (payroll totals + revenue).
+    match /labor_cost/{doc} {
+      allow read, write: if request.auth != null;
+    }
+    match /attendance_alert_settings/{doc} {
+      allow read, write: if request.auth != null;
+    }
+    match /attendance_alerts/{doc} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+    // POS revenue + service-charge pool mirrored from Phase 1 (written by the
+    // bridge Cloud Function via Admin SDK, or HR manual fallback).
+    match /pos_daily/{doc} {
+      allow read, write: if request.auth != null;
+    }
 
     // Biometric device health + tamper/security alarms (written by the bridge).
     match /deviceStatus/{doc} {

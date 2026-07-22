@@ -1,8 +1,8 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
-import { Badge, Card, EmptyState, SectionTitle } from "@/components/manager/ui";
+import { Badge, Button, Card, EmptyState, SectionTitle } from "@/components/manager/ui";
 import { ManagerColors as Colors } from "@/constants/theme";
 import { AttendanceRequest, reviewAttendanceRequest, subscribeAllRequests } from "@/lib/attendance-requests";
 import { notify } from "@/lib/notifications";
@@ -55,13 +55,8 @@ export function RequestsTab({ reviewerName, allowed }: { reviewerName: string; a
             </View>
             {r.reason ? <Text style={styles.reason}>{r.reason}</Text> : null}
             <View style={styles.actions}>
-              <Pressable style={[styles.reject, busy === r.id && styles.dim]} disabled={busy === r.id} onPress={() => act(r, "rejected")}>
-                <Text style={styles.rejectText}>Reject</Text>
-              </Pressable>
-              <Pressable style={[styles.approve, busy === r.id && styles.dim]} disabled={busy === r.id} onPress={() => act(r, "approved")}>
-                <MaterialCommunityIcons name="check" size={16} color="#fff" />
-                <Text style={styles.approveText}>Approve</Text>
-              </Pressable>
+              <Button label="Reject" variant="ghost" disabled={busy === r.id} onPress={() => act(r, "rejected")} />
+              <Button label="Approve" icon="check" loading={busy === r.id} onPress={() => act(r, "approved")} />
             </View>
           </Card>
         ))
@@ -96,9 +91,4 @@ const styles = StyleSheet.create({
   sub: { color: Colors.textFaint, fontSize: 13 },
   reason: { marginTop: 12, color: Colors.textMuted, fontSize: 14, lineHeight: 20 },
   actions: { flexDirection: "row", justifyContent: "flex-end", gap: 10, marginTop: 14 },
-  reject: { height: 42, paddingHorizontal: 18, borderRadius: 11, borderWidth: 1, borderColor: Colors.warmBorder, backgroundColor: Colors.cardSurface, alignItems: "center", justifyContent: "center" },
-  rejectText: { color: Colors.textMuted, fontWeight: "700", fontSize: 14 },
-  approve: { flexDirection: "row", alignItems: "center", gap: 6, height: 42, paddingHorizontal: 20, borderRadius: 11, backgroundColor: Colors.primary, justifyContent: "center" },
-  approveText: { color: "#fff", fontWeight: "700", fontSize: 14 },
-  dim: { opacity: 0.5 },
 });

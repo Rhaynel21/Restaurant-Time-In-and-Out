@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { BarChart, BarDatum } from "@/components/manager/BarChart";
-import { Card, EmptyState, SectionTitle } from "@/components/manager/ui";
+import { Card, EmptyState, SectionTitle, StatTile } from "@/components/manager/ui";
 import { ManagerColors as Colors } from "@/constants/theme";
 import { subscribeAllRequests } from "@/lib/attendance-requests";
 import { EmployeeMaster, subscribeEmployeeMasters } from "@/lib/hr";
@@ -69,10 +69,10 @@ export function WorkforceTab({ allowed }: { allowed: Set<string> | null }) {
   return (
     <View>
       <View style={styles.tiles}>
-        <Tile label="Headcount" value={String(active.length)} sub={`${emps.length - active.length} inactive`} tone="ink" />
-        <Tile label="Pending Approvals" value={String(pendingLeaves + pendingReq)} sub={`${pendingLeaves} leave · ${pendingReq} OT/corr`} tone="danger" />
-        <Tile label="SIL Days Left" value={String(Math.round(silRemaining))} sub={`${year} · all staff`} tone="primary" />
-        <Tile label="Est. Monthly Labor" value={peso(laborCost)} sub={`${WORK_DAYS} days basis`} tone="muted" />
+        <StatTile label="Headcount" value={active.length} sub={`${emps.length - active.length} inactive`} icon="account-group" tone="neutral" />
+        <StatTile label="Pending Approvals" value={pendingLeaves + pendingReq} sub={`${pendingLeaves} leave · ${pendingReq} OT/corr`} icon="clipboard-text-clock-outline" tone="critical" />
+        <StatTile label="SIL Days Left" value={Math.round(silRemaining)} sub={`${year} · all staff`} icon="calendar-check-outline" tone="primary" />
+        <StatTile label="Est. Monthly Labor" value={peso(laborCost)} sub={`${WORK_DAYS} days basis`} icon="cash-multiple" tone="neutral" />
       </View>
 
       <SectionTitle>Headcount by Branch</SectionTitle>
@@ -103,17 +103,6 @@ export function WorkforceTab({ allowed }: { allowed: Set<string> | null }) {
   );
 }
 
-function Tile({ label, value, sub, tone }: { label: string; value: string; sub: string; tone: "ink" | "primary" | "danger" | "muted" }) {
-  const color = tone === "primary" ? Colors.primary : tone === "danger" ? Colors.danger : tone === "muted" ? Colors.textMuted : Colors.textPrimary;
-  return (
-    <View style={styles.tile}>
-      <Text style={[styles.tileValue, { color }]} numberOfLines={1}>{value}</Text>
-      <Text style={styles.tileLabel}>{label}</Text>
-      <Text style={styles.tileSub}>{sub}</Text>
-    </View>
-  );
-}
-
 function Line({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.line}>
@@ -124,11 +113,7 @@ function Line({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
-  tiles: { flexDirection: "row", gap: 10, flexWrap: "wrap", marginBottom: 8 },
-  tile: { flexGrow: 1, flexBasis: 150, backgroundColor: Colors.cardSurface, borderWidth: 1, borderColor: Colors.hairline, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14 },
-  tileValue: { fontSize: 22, fontWeight: "800", letterSpacing: -0.4, fontVariant: ["tabular-nums"] },
-  tileLabel: { marginTop: 3, fontSize: 12, fontWeight: "700", color: Colors.textBody },
-  tileSub: { marginTop: 1, fontSize: 11, color: Colors.textFaint },
+  tiles: { flexDirection: "row", gap: 12, flexWrap: "wrap", marginBottom: 8 },
   two: { flexDirection: "row", gap: 14, flexWrap: "wrap" },
   col: { flexGrow: 1, flexBasis: 240, minWidth: 0 },
   line: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: Colors.hairline },

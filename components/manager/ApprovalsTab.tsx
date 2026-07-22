@@ -1,8 +1,8 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
-import { Badge, Card, EmptyState, SectionTitle } from "@/components/manager/ui";
+import { Badge, Button, Card, EmptyState, SectionTitle } from "@/components/manager/ui";
 import { ManagerColors as Colors } from "@/constants/theme";
 import {
   LEAVE_TYPES,
@@ -72,20 +72,8 @@ export function ApprovalsTab({ reviewerName }: { reviewerName: string }) {
             </View>
             {l.reason ? <Text style={styles.reason}>{l.reason}</Text> : null}
             <View style={styles.actions}>
-              <Pressable
-                style={[styles.btn, styles.reject]}
-                disabled={busy === l.id}
-                onPress={() => decide(l, "rejected")}
-              >
-                <Text style={styles.rejectText}>Reject</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.btn, styles.approve]}
-                disabled={busy === l.id}
-                onPress={() => decide(l, "approved")}
-              >
-                <Text style={styles.approveText}>{busy === l.id ? "Saving…" : "Approve"}</Text>
-              </Pressable>
+              <Button label="Reject" variant="ghost" disabled={busy === l.id} onPress={() => decide(l, "rejected")} />
+              <Button label="Approve" icon="check" loading={busy === l.id} onPress={() => decide(l, "approved")} />
             </View>
           </Card>
         ))
@@ -102,9 +90,4 @@ const styles = StyleSheet.create({
   sub: { color: Colors.textFaint, fontSize: 13, marginTop: 2 },
   reason: { marginTop: 12, color: Colors.textMuted, fontSize: 14, lineHeight: 20 },
   actions: { flexDirection: "row", justifyContent: "flex-end", gap: 10, marginTop: 16 },
-  btn: { minWidth: 132, height: 42, paddingHorizontal: 20, borderRadius: 11, alignItems: "center", justifyContent: "center" },
-  approve: { backgroundColor: Colors.primary },
-  approveText: { color: "#fff", fontWeight: "700", fontSize: 14 },
-  reject: { backgroundColor: Colors.dangerTint, borderWidth: 1, borderColor: "rgba(220,38,38,0.2)" },
-  rejectText: { color: Colors.danger, fontWeight: "700", fontSize: 14 },
 });

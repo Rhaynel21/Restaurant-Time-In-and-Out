@@ -31,9 +31,9 @@ export function AuditTab() {
       {items.length === 0 ? (
         <EmptyState icon="history" text="No audit entries yet — sensitive changes will appear here" />
       ) : (
-        items.map((e) => (
-          <Card key={e.id}>
-            <View style={styles.row}>
+        <Card style={{ padding: 0 }}>
+          {items.map((e, i) => (
+            <View key={e.id} style={[styles.row, i < items.length - 1 && styles.rowBorder]}>
               <View style={[styles.icon, { backgroundColor: tone(e.action) + "1A" }]}>
                 <MaterialCommunityIcons name={iconFor(e.entity)} size={20} color={tone(e.action)} />
               </View>
@@ -46,15 +46,16 @@ export function AuditTab() {
               </View>
               <Text style={styles.actor}>{e.actor}</Text>
             </View>
-          </Card>
-        ))
+          ))}
+        </Card>
       )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center", gap: 12 },
+  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 13 },
+  rowBorder: { borderBottomWidth: 1, borderBottomColor: Colors.hairline },
   icon: { width: 42, height: 42, borderRadius: 11, alignItems: "center", justifyContent: "center" },
   grow: { flex: 1, minWidth: 0 },
   title: { fontWeight: "700", fontSize: 14, color: Colors.textPrimary },

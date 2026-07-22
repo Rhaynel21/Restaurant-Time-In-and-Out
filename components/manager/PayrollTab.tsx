@@ -2,15 +2,18 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { Card, EmptyState, SectionTitle, Select } from "@/components/manager/ui";
+import { Button, Card, EmptyState, SectionTitle, Select } from "@/components/manager/ui";
 import { ManagerColors as Colors } from "@/constants/theme";
 import { getAttendanceForMonth } from "@/lib/attendance";
 import { buildDtr } from "@/lib/dtr";
-import { EmployeeMaster, subscribeEmployeeMasters } from "@/lib/hr";
+import { DtrLock, isPeriodLocked, subscribeDtrLocks } from "@/lib/dtr-lock";
+import { EmployeeMaster, isPayrollExcluded, subscribeEmployeeMasters } from "@/lib/hr";
 import { AttendanceRequest, subscribeAllRequests } from "@/lib/attendance-requests";
 import { LeaveRequest, subscribeAllLeaves } from "@/lib/leaves";
 import { loanBalanceAfter, loanDeductionForMonth } from "@/lib/loans";
+import { saveLaborCost } from "@/lib/labor-cost";
 import { inScope } from "@/lib/org";
+import { PayrollRun, approveRun, releaseRun, reopenRun, subscribePayrollRun } from "@/lib/payroll-run";
 import { savePayrollFormula, subscribePayrollFormula } from "@/lib/payroll-settings";
 import { DEFAULT_FORMULA, PH_RATES_VERSION, PayBasis, PayFormula, PayInputs, Payslip as PayslipData, computePeriodPayslip, payPeriods, peso } from "@/lib/ph-payroll";
 import { getSchedule } from "@/lib/schedules";
@@ -20,6 +23,7 @@ type PayRow = {
   name: string;
   department: string;
   branch: string;
+  branchId: string;
   tin: string;
   sss: string;
   philhealth: string;
@@ -56,10 +60,14 @@ export function PayrollTab({ allowed, companyId, managerName }: { allowed: Set<s
 
   const [allLeaves, setAllLeaves] = useState<LeaveRequest[]>([]);
   const [allRequests, setAllRequests] = useState<AttendanceRequest[]>([]);
+  const [locks, setLocks] = useState<DtrLock[]>([]);
+  const [run, setRun] = useState<PayrollRun | null>(null);
+  const [runBusy, setRunBusy] = useState(false);
 
   useEffect(() => subscribeEmployeeMasters(setEmployees, () => setEmployees([])), []);
   useEffect(() => subscribeAllLeaves(setAllLeaves, () => setAllLeaves([])), []);
   useEffect(() => subscribeAllRequests(setAllRequests, () => setAllRequests([])), []);
+  useEffect(() => subscribeDtrLocks(setLocks, () => setLocks([])), []);
   useEffect(
     () => subscribePayrollFormula(companyId, (f) => { setFormula(f); setDraft(f); }, () => {}),
     [companyId],
@@ -72,6 +80,43 @@ export function PayrollTab({ allowed, companyId, managerName }: { allowed: Set<s
   const period = periods.find((p) => p.key === periodKey) ?? periods[0];
   const periodOptions = periods.map((p) => ({ value: p.key, label: p.label }));
 
+  // Track the approve→release status for the selected company · month · cutoff.
+  useEffect(
+    () => subscribePayrollRun(companyId, month, period.key, setRun, () => setRun(null)),
+    [companyId, month, period.key],
+  );
+  const status = run?.status ?? "draft";
+  const released = status === "released";
+
+  // Step 5 tie-in: which branches in the computed run haven't had their DTR locked
+  // for this month. Payroll should be released only on locked (frozen) attendance.
+  const unlockedBranches = useMemo(() => {
+    if (!rows) return [];
+    const seen = new Map<string, string>();
+    rows.forEach((r) => {
+      if (!isPeriodLocked(locks, r.branchId, month)) seen.set(r.branchId || r.branch, r.branch || "—");
+    });
+    return [...seen.values()];
+  }, [rows, locks, month]);
+  const allLocked = rows != null && unlockedBranches.length === 0;
+
+  const advanceRun = async (action: "approve" | "release" | "reopen") => {
+    setRunBusy(true);
+    setError("");
+    try {
+      if (action === "approve") await approveRun(companyId, month, period.key, managerName);
+      else if (action === "release") {
+        await releaseRun(companyId, month, period.key, managerName);
+        // Feed the Owner Insight (Step 8): persist this run's labor cost for the month.
+        await saveLaborCost(companyId, month, { grossPayroll: totals.gross, employerContributions: totals.employer });
+      } else await reopenRun(companyId, month, period.key);
+    } catch (e) {
+      setError("Run update failed: " + (e instanceof Error ? e.message : "unknown error"));
+    } finally {
+      setRunBusy(false);
+    }
+  };
+
   const compute = async () => {
     setError("");
     setOpenId(null);
@@ -80,7 +125,8 @@ export function PayrollTab({ allowed, companyId, managerName }: { allowed: Set<s
       return;
     }
     // Multi-tenant: only employees within the signed-in user's org scope.
-    const active = employees.filter((e) => e.status === "active" && inScope(e.branchId, allowed));
+    // Agency Personnel are the agency's payroll responsibility (PM-05) — excluded.
+    const active = employees.filter((e) => e.status === "active" && inScope(e.branchId, allowed) && !isPayrollExcluded(e));
     if (active.length === 0) {
       setError("No active employees to compute.");
       return;
@@ -122,6 +168,7 @@ export function PayrollTab({ allowed, companyId, managerName }: { allowed: Set<s
             name: e.fullName,
             department: e.department,
             branch: e.branchName ?? "",
+            branchId: e.branchId ?? "",
             tin: e.tin,
             sss: e.sss,
             philhealth: e.philhealth,
@@ -271,27 +318,13 @@ export function PayrollTab({ allowed, companyId, managerName }: { allowed: Set<s
               <Select value={period.key} width={200} options={periodOptions} onChange={setPeriodKey} />
             </View>
           )}
-          <Pressable style={styles.genBtn} disabled={loading} onPress={compute}>
-            <Text style={styles.genText}>{loading ? "Computing…" : "Compute Payroll"}</Text>
-          </Pressable>
+          <Button label="Compute Payroll" icon="cog-outline" loading={loading} onPress={compute} />
           {Platform.OS === "web" && (
             <>
-              <Pressable style={[styles.ghostBtn, !rows && styles.ghostDisabled]} disabled={!rows} onPress={exportRegister}>
-                <MaterialCommunityIcons name="table-arrow-down" size={16} color={Colors.primaryDark} />
-                <Text style={styles.ghostText}>Register</Text>
-              </Pressable>
-              <Pressable style={[styles.ghostBtn, !rows && styles.ghostDisabled]} disabled={!rows} onPress={exportAlphalist}>
-                <MaterialCommunityIcons name="file-certificate-outline" size={16} color={Colors.primaryDark} />
-                <Text style={styles.ghostText}>Tax Summary</Text>
-              </Pressable>
-              <Pressable style={[styles.ghostBtn, !rows && styles.ghostDisabled]} disabled={!rows} onPress={exportContributions}>
-                <MaterialCommunityIcons name="shield-account-outline" size={16} color={Colors.primaryDark} />
-                <Text style={styles.ghostText}>Contributions</Text>
-              </Pressable>
-              <Pressable style={[styles.ghostBtn, !rows && styles.ghostDisabled]} disabled={!rows} onPress={exportBankFile}>
-                <MaterialCommunityIcons name="bank-outline" size={16} color={Colors.primaryDark} />
-                <Text style={styles.ghostText}>Bank File</Text>
-              </Pressable>
+              <Button label="Register" variant="ghost" icon="table-arrow-down" disabled={!rows} onPress={exportRegister} />
+              <Button label="Tax Summary" variant="ghost" icon="file-certificate-outline" disabled={!rows} onPress={exportAlphalist} />
+              <Button label="Contributions" variant="ghost" icon="shield-account-outline" disabled={!rows} onPress={exportContributions} />
+              <Button label="Bank File" variant="ghost" icon="bank-outline" disabled={!rows || !released} onPress={exportBankFile} />
             </>
           )}
         </View>
@@ -361,12 +394,8 @@ export function PayrollTab({ allowed, companyId, managerName }: { allowed: Set<s
 
           <View style={styles.formulaActions}>
             {formulaMsg ? <Text style={styles.formulaMsg}>{formulaMsg}</Text> : <View style={{ flex: 1 }} />}
-            <Pressable style={styles.resetBtn} onPress={() => setDraft(DEFAULT_FORMULA)}>
-              <Text style={styles.resetText}>Reset to Labor Code</Text>
-            </Pressable>
-            <Pressable style={[styles.saveFormulaBtn, (!companyId || savingFormula) && styles.ghostDisabled]} disabled={!companyId || savingFormula} onPress={saveFormula}>
-              <Text style={styles.saveFormulaText}>{savingFormula ? "Saving…" : "Save formula"}</Text>
-            </Pressable>
+            <Button label="Reset to Labor Code" variant="ghost" size="sm" onPress={() => setDraft(DEFAULT_FORMULA)} />
+            <Button label={savingFormula ? "Saving…" : "Save formula"} size="sm" disabled={!companyId} loading={savingFormula} onPress={saveFormula} />
           </View>
           {!companyId && <Text style={styles.formulaNote}>Pick a specific company (org scope) to save custom rates.</Text>}
 
@@ -390,6 +419,45 @@ export function PayrollTab({ allowed, companyId, managerName }: { allowed: Set<s
             <SummaryTile label="Deductions" value={peso(totals.deductions)} tone="danger" />
             <SummaryTile label="Total Net Pay" value={peso(totals.net)} tone="primary" />
             <SummaryTile label="Employer Share" value={peso(totals.employer)} tone="muted" />
+          </View>
+
+          <View style={styles.runBar}>
+            <View style={[styles.runStatusChip, status === "released" ? styles.chipReleased : status === "approved" ? styles.chipApproved : styles.chipDraft]}>
+              <MaterialCommunityIcons
+                name={status === "released" ? "check-decagram" : status === "approved" ? "clipboard-check-outline" : "file-document-edit-outline"}
+                size={15}
+                color={status === "released" ? Colors.success : status === "approved" ? Colors.primaryDark : Colors.textMuted}
+              />
+              <Text style={styles.runStatusText}>
+                {status === "released" ? "Released" : status === "approved" ? "Approved" : "Draft"}
+              </Text>
+            </View>
+            <View style={styles.runMetaCol}>
+              {status === "draft" && !allLocked ? (
+                <Text style={styles.runWarn}>
+                  <Text style={{ fontWeight: "800" }}>Lock DTR first — </Text>
+                  {unlockedBranches.join(", ")} not locked for {month}. Approve is disabled until every branch&apos;s cutoff is locked.
+                </Text>
+              ) : status === "draft" ? (
+                <Text style={styles.runMeta}>All branches locked for {month}. Ready to approve.</Text>
+              ) : status === "approved" ? (
+                <Text style={styles.runMeta}>Approved by {run?.approvedBy || "—"}. Release to generate the bank file &amp; unlock payslips.</Text>
+              ) : (
+                <Text style={styles.runMeta}>Released by {run?.releasedBy || "—"}. Bank file &amp; payslips are unlocked.</Text>
+              )}
+            </View>
+            {status === "draft" && (
+              <Button label="Approve draft" icon="clipboard-check-outline" size="sm" disabled={!allLocked} loading={runBusy} onPress={() => advanceRun("approve")} />
+            )}
+            {status === "approved" && (
+              <>
+                <Button label="Reopen" variant="ghost" size="sm" disabled={runBusy} onPress={() => advanceRun("reopen")} />
+                <Button label="Release payroll" icon="bank-transfer-out" size="sm" loading={runBusy} onPress={() => advanceRun("release")} />
+              </>
+            )}
+            {status === "released" && (
+              <Button label="Reopen" variant="ghost" size="sm" disabled={runBusy} onPress={() => advanceRun("reopen")} />
+            )}
           </View>
 
           <Card>
@@ -596,6 +664,29 @@ const styles = StyleSheet.create({
   summaryTile: { flexGrow: 1, flexBasis: 150, backgroundColor: Colors.cardSurface, borderWidth: 1, borderColor: Colors.hairline, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14 },
   summaryValue: { fontSize: 20, fontWeight: "800", letterSpacing: -0.3, fontVariant: ["tabular-nums"] },
   summaryLabel: { marginTop: 3, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, color: Colors.textFaint, fontWeight: "600" },
+
+  // Approve → release status bar (Step 7)
+  runBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    flexWrap: "wrap",
+    marginTop: 12,
+    marginBottom: 4,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.hairline,
+    backgroundColor: Colors.cardSurface,
+  },
+  runStatusChip: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999 },
+  chipDraft: { backgroundColor: Colors.warmSurface },
+  chipApproved: { backgroundColor: Colors.primaryTint },
+  chipReleased: { backgroundColor: "#E9F6EE" },
+  runStatusText: { fontSize: 12.5, fontWeight: "800", color: Colors.textPrimary, textTransform: "uppercase", letterSpacing: 0.4 },
+  runMetaCol: { flex: 1, minWidth: 200 },
+  runMeta: { fontSize: 12.5, color: Colors.textMuted, lineHeight: 17 },
+  runWarn: { fontSize: 12.5, color: Colors.warningDeep, lineHeight: 17 },
 
   sheetHead: { marginBottom: 12 },
   sheetTitle: { fontSize: 18, fontWeight: "700", color: Colors.textPrimary },

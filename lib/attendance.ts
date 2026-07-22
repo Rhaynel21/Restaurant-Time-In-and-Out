@@ -1,10 +1,14 @@
 import {
   Timestamp,
+  addDoc,
   collection,
+  doc,
   getDocs,
   limit,
   onSnapshot,
   query,
+  serverTimestamp,
+  updateDoc,
   where,
 } from "firebase/firestore";
 
@@ -48,6 +52,13 @@ export type AttendanceRecord = {
   breakOutAt: Date | null; // left for break
   breakInAt: Date | null; // returned from break
   totalMinutes: number | null;
+  // How the punch was captured (Step 3): "biometric" = Hikvision fingerprint
+  // bridge (the default for existing records), "gps" = mobile GPS check-in,
+  // "manual" = HR-entered. GPS punches carry the device location.
+  method: "biometric" | "gps" | "manual";
+  checkInLocation: LocationPoint | null;
+  checkOutLocation: LocationPoint | null;
+  selfieUrl: string | null;
   // Midnight roll-over flags (set by the bridge): a shift still open at 23:59 is
   // auto-closed for that day (autoClosed) and, if it's an overnight shift, a
   // continuation record is auto-opened at 00:00 (autoOpened + continuedFrom).
@@ -56,6 +67,16 @@ export type AttendanceRecord = {
   autoOpened: boolean;
   continuedFrom: string | null;
 };
+
+function toLocation(value: unknown): LocationPoint | null {
+  if (value && typeof value === "object" && "lat" in value && "lng" in value) {
+    const v = value as { lat: unknown; lng: unknown; accuracyMeters?: unknown };
+    if (typeof v.lat === "number" && typeof v.lng === "number") {
+      return { lat: v.lat, lng: v.lng, accuracyMeters: typeof v.accuracyMeters === "number" ? v.accuracyMeters : null };
+    }
+  }
+  return null;
+}
 
 function timestampToDate(value: unknown) {
   if (value instanceof Timestamp) return value.toDate();
@@ -82,6 +103,10 @@ function toAttendanceRecord(record: LocalAttendanceRecord): AttendanceRecord {
     breakOutAt: null,
     breakInAt: null,
     totalMinutes: record.totalMinutes,
+    method: "biometric",
+    checkInLocation: null,
+    checkOutLocation: null,
+    selfieUrl: null,
     autoClosed: false,
     autoOpened: false,
     continuedFrom: null,
@@ -103,6 +128,10 @@ function recordFromRemote(id: string, data: Record<string, unknown>): Attendance
     breakOutAt: timestampToDate(data.breakOutAt),
     breakInAt: timestampToDate(data.breakInAt),
     totalMinutes: typeof data.totalMinutes === "number" ? data.totalMinutes : null,
+    method: data.method === "gps" ? "gps" : data.method === "manual" ? "manual" : "biometric",
+    checkInLocation: toLocation(data.checkInLocation),
+    checkOutLocation: toLocation(data.checkOutLocation),
+    selfieUrl: typeof data.selfieUrl === "string" ? data.selfieUrl : null,
     autoClosed: data.autoClosed === true,
     autoOpened: data.autoOpened === true,
     continuedFrom: typeof data.continuedFrom === "string" ? data.continuedFrom : null,
@@ -264,4 +293,40 @@ export async function getRecentAttendance(employeeId: string, maxItems = 40) {
 export async function clearLocalSession() {
   await ensureOfflineStoreInitialized();
   await clearLastSignedInEmployee();
+}
+
+// ── Mobile GPS check-in (Step 3) ─────────────────────────────────────────────
+// An alternative to the biometric terminal: the employee punches from their phone,
+// stamped with device location (validated against the branch geofence by the
+// caller). Writes into the same `attendance` collection the
+// bridge uses, tagged method:"gps" so DTR/reports can tell punches apart.
+
+type PunchEmployee = Pick<EmployeeProfile, "employeeId" | "fullName" | "branchId" | "branchName">;
+
+export async function gpsCheckIn(employee: PunchEmployee, location: LocationPoint): Promise<string> {
+  const now = new Date();
+  const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const ref = await addDoc(collection(db, "attendance"), {
+    employeeId: employee.employeeId,
+    employeeName: employee.fullName,
+    branchId: employee.branchId ?? "",
+    branchName: employee.branchName ?? "",
+    checkInAt: serverTimestamp(),
+    checkOutAt: null,
+    method: "gps",
+    checkInLocation: location,
+    selfieUrl: null,
+    period,
+    createdAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+
+export async function gpsCheckOut(recordId: string, checkInAt: Date, location: LocationPoint): Promise<void> {
+  const totalMinutes = Math.max(0, Math.round((Date.now() - checkInAt.getTime()) / 60000));
+  await updateDoc(doc(db, "attendance", recordId), {
+    checkOutAt: serverTimestamp(),
+    checkOutLocation: location,
+    totalMinutes,
+  });
 }

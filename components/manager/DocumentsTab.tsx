@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useEffect, useState } from "react";
 import { Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { Card, EmptyState, SectionTitle } from "@/components/manager/ui";
+import { Card, EmptyState, Field, SectionTitle, Select } from "@/components/manager/ui";
 import { ManagerColors as Colors } from "@/constants/theme";
 import {
   EmployeeDocument,
@@ -78,20 +78,20 @@ export function DocumentsTab({ managerName, allowed }: { managerName: string; al
     <View>
       <SectionTitle>Employee</SectionTitle>
       <Card>
-        <View style={styles.chips}>
-          {employees.length === 0 ? (
-            <Text style={styles.muted}>Loading employees…</Text>
-          ) : (
-            employees.map((e) => {
-              const active = e.employeeId === selected?.employeeId;
-              return (
-                <Pressable key={e.employeeId} style={[styles.chip, active && styles.chipOn]} onPress={() => setSelected(e)}>
-                  <Text style={[styles.chipText, active && styles.chipTextOn]}>{e.fullName}</Text>
-                </Pressable>
-              );
-            })
-          )}
-        </View>
+        {employees.length === 0 ? (
+          <Text style={styles.muted}>Loading employees…</Text>
+        ) : (
+          <Field label="Employee">
+            <Select
+              value={selected?.employeeId ?? null}
+              searchable
+              placeholder="Search & select employee…"
+              width={300}
+              options={employees.map((e) => ({ value: e.employeeId, label: e.fullName }))}
+              onChange={(id) => setSelected(employees.find((e) => e.employeeId === id) ?? null)}
+            />
+          </Field>
+        )}
       </Card>
 
       {selected && (
@@ -146,11 +146,6 @@ export function DocumentsTab({ managerName, allowed }: { managerName: string; al
 }
 
 const styles = StyleSheet.create({
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: Colors.warmSurface, borderWidth: 1, borderColor: Colors.warmBorder },
-  chipOn: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  chipText: { fontSize: 13, fontWeight: "700", color: Colors.textPrimary },
-  chipTextOn: { color: "#fff" },
   muted: { color: Colors.textFaint, fontSize: 13 },
 
   head: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 },

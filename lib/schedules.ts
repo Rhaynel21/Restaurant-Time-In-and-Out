@@ -1,4 +1,4 @@
-import { doc, onSnapshot, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { collection, doc, getDocs, onSnapshot, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 
 import { db } from "@/lib/firebase";
 
@@ -56,6 +56,9 @@ export type Schedule = {
   breakEnd: string | null;
   updatedAt: Date | null;
   updatedBy: string | null;
+  publishedAt: Date | null;
+  publishedBy: string | null;
+  publishedLocked: boolean;
 };
 
 export const WEEKDAY_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -162,6 +165,9 @@ function toSchedule(employeeId: string, data: Record<string, unknown>): Schedule
     breakEnd: typeof data.breakEnd === "string" ? data.breakEnd : null,
     updatedAt: timestampToDate(data.updatedAt),
     updatedBy: typeof data.updatedBy === "string" ? data.updatedBy : null,
+    publishedAt: timestampToDate(data.publishedAt),
+    publishedBy: typeof data.publishedBy === "string" ? data.publishedBy : null,
+    publishedLocked: data.publishedLocked === true,
   };
 }
 
@@ -180,6 +186,9 @@ export function emptySchedule(employeeId: string, employeeName = employeeId): Sc
     breakEnd: "13:00",
     updatedAt: null,
     updatedBy: null,
+    publishedAt: null,
+    publishedBy: null,
+    publishedLocked: false,
   };
 }
 
@@ -284,6 +293,17 @@ export async function getSchedule(employeeId: string): Promise<Schedule> {
   return toSchedule(employeeId, snap.data() as Record<string, unknown>);
 }
 
+// One-shot read of every saved schedule, keyed by employeeId. Used by the
+// dashboard to work out who was scheduled today (for the absent count).
+// Employees without a saved doc simply won't appear here — callers fall back to
+// `emptySchedule` (the default Mon–Sat weekly) for those.
+export async function getAllSchedules(): Promise<Map<string, Schedule>> {
+  const snap = await getDocs(collection(db, "schedules"));
+  const map = new Map<string, Schedule>();
+  snap.forEach((d) => map.set(d.id, toSchedule(d.id, d.data() as Record<string, unknown>)));
+  return map;
+}
+
 // Create or update a schedule (used by managers/admins).
 export async function saveSchedule(
   schedule: Pick<
@@ -300,6 +320,10 @@ export async function saveSchedule(
   >,
   updatedBy: string,
 ) {
+  const current = await getDoc(doc(db, "schedules", schedule.employeeId));
+  if (current.exists() && current.data().publishedLocked === true) {
+    throw new Error("This published schedule is locked. Unlock it before creating a revised draft.");
+  }
   await setDoc(
     doc(db, "schedules", schedule.employeeId),
     {
@@ -318,4 +342,21 @@ export async function saveSchedule(
     },
     { merge: true },
   );
+}
+
+export async function publishSchedule(schedule: Parameters<typeof saveSchedule>[0], publishedBy: string) {
+  await saveSchedule(schedule, publishedBy);
+  await setDoc(doc(db, "schedules", schedule.employeeId), {
+    publishedLocked: true,
+    publishedBy,
+    publishedAt: serverTimestamp(),
+  }, { merge: true });
+}
+
+export async function unlockPublishedSchedule(employeeId: string, updatedBy: string) {
+  await setDoc(doc(db, "schedules", employeeId), {
+    publishedLocked: false,
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
 }

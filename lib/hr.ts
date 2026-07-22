@@ -14,6 +14,24 @@ export type PayType = "daily" | "hourly";
 export type Gender = "" | "male" | "female" | "other";
 export type CivilStatus = "" | "single" | "married" | "widowed" | "separated";
 
+// Employment classification (WM-PM-01 §4). Drives payroll eligibility.
+export type WorkerType = "regular" | "probationary" | "parttime" | "agency" | "ojt" | "apprentice";
+export const WORKER_TYPES: { value: WorkerType; label: string }[] = [
+  { value: "regular", label: "Regular" },
+  { value: "probationary", label: "Probationary" },
+  { value: "parttime", label: "Part-time" },
+  { value: "agency", label: "Agency (contractual)" },
+  { value: "ojt", label: "OJT / Intern" },
+  { value: "apprentice", label: "Apprentice (TESDA)" },
+];
+// Agency Personnel are the manning agency's payroll responsibility (DOLE DO 174 /
+// WM-PM-05): excluded from payroll runs, payslips, bank files, and government
+// reports — but STILL recorded on timekeeping. This is the hard PM-05 rule and is
+// independent of the (blocked) service-charge agency-coverage toggle (ISS-02).
+export function isPayrollExcluded(e: { workerType: WorkerType }): boolean {
+  return e.workerType === "agency";
+}
+
 export type EmployeeMaster = {
   employeeId: string;
   firstName: string;
@@ -29,6 +47,7 @@ export type EmployeeMaster = {
   branchIds: string[]; // area managers cover several branches
   branchName: string | null;
   accessRole: AccessRole;
+  workerType: WorkerType; // employment classification (agency = payroll-excluded)
   hireDate: string | null; // YYYY-MM-DD
   // ── Payroll: pay basis + rates ──
   payType: PayType; // "daily" → rate × days present; "hourly" → rate × hours worked
@@ -92,6 +111,7 @@ function toMaster(id: string, data: Record<string, unknown>): EmployeeMaster {
     branchIds: Array.isArray(data.branchIds) ? data.branchIds.filter((x): x is string => typeof x === "string") : [],
     branchName: typeof data.branchName === "string" ? data.branchName : null,
     accessRole: str(data.accessRole, "staff") as AccessRole,
+    workerType: (WORKER_TYPES.some((t) => t.value === data.workerType) ? data.workerType : "regular") as WorkerType,
     hireDate: typeof data.hireDate === "string" ? data.hireDate : null,
     payType: data.payType === "hourly" ? "hourly" : "daily",
     dailyRate: typeof data.dailyRate === "number" ? data.dailyRate : null,
@@ -137,6 +157,7 @@ export function blankEmployee(): EmployeeMaster {
     branchIds: [],
     branchName: null,
     accessRole: "staff",
+    workerType: "regular",
     hireDate: null,
     payType: "daily",
     dailyRate: null,
@@ -217,6 +238,7 @@ export async function saveEmployeeMaster(rec: EmployeeMaster, updatedBy: string)
       branchIds: rec.branchIds,
       branchName: rec.branchName,
       accessRole: rec.accessRole,
+      workerType: rec.workerType,
       hireDate: rec.hireDate,
       payType: rec.payType,
       dailyRate: rec.dailyRate,
