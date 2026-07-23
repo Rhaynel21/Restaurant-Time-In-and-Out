@@ -403,30 +403,38 @@ export function Select({
     : null;
   return (
     <View style={[styles.selectWrap, width ? { width } : { alignSelf: "stretch" }, open && styles.selectWrapOpen]}>
-      <Pressable ref={triggerRef} style={[styles.selectBtn, open && styles.selectBtnOpen]} onPress={() => (open ? close() : openMenu())}>
-        <Text style={[styles.selectValue, !current && { color: Colors.textFaint, fontWeight: "500" }]} numberOfLines={1}>
-          {current?.label ?? placeholder}
-        </Text>
-        <MaterialCommunityIcons name={open ? "chevron-up" : "chevron-down"} size={18} color={open ? Colors.primary : Colors.textMuted} />
-      </Pressable>
+      {searchable ? (
+        // Type-ahead combobox: the trigger IS the search box (no separate one).
+        <View ref={triggerRef} style={[styles.selectBtn, open && styles.selectBtnOpen]}>
+          <MaterialCommunityIcons name="magnify" size={16} color={Colors.textFaint} />
+          <TextInput
+            value={open ? query : current?.label ?? ""}
+            onChangeText={(t) => {
+              if (!open) openMenu();
+              setQuery(t);
+            }}
+            onFocus={openMenu}
+            placeholder={placeholder}
+            placeholderTextColor={Colors.textPlaceholder}
+            style={[styles.selectComboInput, webInputReset]}
+          />
+          <Pressable onPress={() => (open ? close() : openMenu())} hitSlop={6}>
+            <MaterialCommunityIcons name={open ? "chevron-up" : "chevron-down"} size={18} color={open ? Colors.primary : Colors.textMuted} />
+          </Pressable>
+        </View>
+      ) : (
+        <Pressable ref={triggerRef} style={[styles.selectBtn, open && styles.selectBtnOpen]} onPress={() => (open ? close() : openMenu())}>
+          <Text style={[styles.selectValue, !current && { color: Colors.textFaint, fontWeight: "500" }]} numberOfLines={1}>
+            {current?.label ?? placeholder}
+          </Text>
+          <MaterialCommunityIcons name={open ? "chevron-up" : "chevron-down"} size={18} color={open ? Colors.primary : Colors.textMuted} />
+        </Pressable>
+      )}
       {open && portal(
         <>
           <Pressable style={fixedFill} onPress={close} />
           <View style={[styles.selectMenu, fixedMenu]}>
-            {searchable && (
-              <View style={styles.selectSearch}>
-                <MaterialCommunityIcons name="magnify" size={16} color={Colors.textFaint} />
-                <TextInput
-                  value={query}
-                  onChangeText={setQuery}
-                  placeholder="Search…"
-                  placeholderTextColor={Colors.textPlaceholder}
-                  style={[styles.selectSearchInput, webInputReset]}
-                  autoFocus
-                />
-              </View>
-            )}
-            <ScrollView style={styles.selectScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <ScrollView style={styles.selectScroll} showsVerticalScrollIndicator keyboardShouldPersistTaps="handled">
               {shown.length === 0 ? (
                 <Text style={styles.selectEmpty}>No matches</Text>
               ) : (
@@ -929,6 +937,7 @@ const styles = StyleSheet.create({
   selectItemTextOn: { color: Colors.primary, fontWeight: "800" },
   selectSearch: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, height: 40, borderBottomWidth: 1, borderBottomColor: Colors.hairline },
   selectSearchInput: { flex: 1, fontSize: 14, color: Colors.textPrimary, paddingVertical: 0 },
+  selectComboInput: { flex: 1, fontSize: 14, color: Colors.textPrimary, fontWeight: "600", paddingVertical: 0 },
   selectEmpty: { fontSize: 13, color: Colors.textFaint, fontWeight: "600", paddingHorizontal: 12, paddingVertical: 12 },
 
   table: {

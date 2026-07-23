@@ -47,6 +47,10 @@ export function PayrollTab({ allowed, companyId, managerName }: { allowed: Set<s
   const [employees, setEmployees] = useState<EmployeeMaster[]>([]);
   const [month, setMonth] = useState(currentMonthValue());
   const [rows, setRows] = useState<PayRow[] | null>(null);
+  // Manually-entered service charge per employee (RA 11360 distribution the POS
+  // bridge/PM rule doesn't auto-compute) — a pass-through earning added to net.
+  const [scByEmp, setScByEmp] = useState<Record<string, number>>({});
+  const scOf = (id: string) => scByEmp[id] || 0;
   const [label, setLabel] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -205,18 +209,20 @@ export function PayrollTab({ allowed, companyId, managerName }: { allowed: Set<s
   };
 
   const totals = useMemo(() => {
-    const base = { gross: 0, deductions: 0, net: 0, employer: 0 };
+    const base = { gross: 0, deductions: 0, net: 0, employer: 0, sc: 0 };
     if (!rows) return base;
     return rows.reduce(
       (a, r) => ({
-        gross: a.gross + r.slip.grossPay,
+        gross: a.gross + r.slip.grossPay + scOf(r.id),
         deductions: a.deductions + r.slip.totalDeductions,
-        net: a.net + r.slip.netPay,
+        net: a.net + r.slip.netPay + scOf(r.id),
         employer: a.employer + r.slip.employerContributions,
+        sc: a.sc + scOf(r.id),
       }),
       base,
     );
-  }, [rows]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, scByEmp]);
 
   const csvDownload = (filename: string, head: string[], records: (string | number)[][]) => {
     if (Platform.OS !== "web") return;
@@ -241,7 +247,7 @@ export function PayrollTab({ allowed, companyId, managerName }: { allowed: Set<s
     const head = [
       "Employee ID", "Name", "Branch", "Department", "Pay Days", "Basic Pay",
       "OT Pay", "Night Diff", "Reg Holiday", "Special Holiday", "Allowance", "De-Minimis", "Gross Pay",
-      "SSS (EE)", "PhilHealth (EE)", "Pag-IBIG (EE)", "Withholding Tax", "Loans/Advances", "Total Deductions", "Net Pay",
+      "SSS (EE)", "PhilHealth (EE)", "Pag-IBIG (EE)", "Withholding Tax", "Loans/Advances", "Total Deductions", "Service Charge", "Net Pay",
       "SSS (ER)", "PhilHealth (ER)", "Pag-IBIG (ER)", "Employer Total", "13th Month Accrual",
     ];
     csvDownload(
@@ -252,7 +258,7 @@ export function PayrollTab({ allowed, companyId, managerName }: { allowed: Set<s
         return [
           r.id, r.name, r.branch, r.department, s.daysPresent, s.basicPay,
           s.otPay, s.nightPay, s.regHolidayPay, s.specialHolidayPay, s.allowanceTaxable, s.deMinimis, s.grossPay,
-          s.sssEE, s.philhealthEE, s.pagibigEE, s.withholdingTax, s.totalOtherDeductions, s.totalDeductions, s.netPay,
+          s.sssEE, s.philhealthEE, s.pagibigEE, s.withholdingTax, s.totalOtherDeductions, s.totalDeductions, scOf(r.id), s.netPay + scOf(r.id),
           s.sssER, s.philhealthER, s.pagibigER, s.employerContributions, s.thirteenthMonthAccrual,
         ];
       }),
@@ -281,7 +287,7 @@ export function PayrollTab({ allowed, companyId, managerName }: { allowed: Set<s
     csvDownload(
       `Bank_File_${monthTag()}.csv`,
       head,
-      rows.map((r) => [r.id, r.name, r.bankName, r.bankAccount, r.slip.netPay]),
+      rows.map((r) => [r.id, r.name, r.bankName, r.bankAccount, r.slip.netPay + scOf(r.id)]),
     );
   };
 
@@ -342,18 +348,18 @@ export function PayrollTab({ allowed, companyId, managerName }: { allowed: Set<s
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </Card>
 
-      <Pressable style={styles.formulaToggle} onPress={() => setShowFormulas((f) => !f)}>
+      <Pressable style={[styles.formulaToggle, showFormulas && styles.formulaToggleActive]} onPress={() => setShowFormulas((f) => !f)}>
         <MaterialCommunityIcons name="function-variant" size={16} color={Colors.primary} />
         <Text style={styles.formulaToggleText}>Pay computation formula — view &amp; edit</Text>
-        <MaterialCommunityIcons name={showFormulas ? "chevron-up" : "chevron-down"} size={18} color={Colors.textMuted} />
+        <MaterialCommunityIcons name={showFormulas ? "chevron-up" : "chevron-down"} size={18} color={Colors.primary} />
       </Pressable>
       {showFormulas && (
         <Card>
           <Text style={styles.formulaHead}>Editable DOLE pay premiums</Text>
           <View style={styles.formulaGrid}>
-            <FormulaField label="Hours / day" value={draft.hoursPerDay} suffix="hrs" onChange={(n) => setDraft({ ...draft, hoursPerDay: n })} />
+            <FormulaField label="Hours / day" value={draft.hoursPerDay} suffix="hrs" hint="standard workday" onChange={(n) => setDraft({ ...draft, hoursPerDay: n })} />
             <FormulaField label="Overtime premium" value={pct(draft.otPremium)} suffix="%" hint={`= pay ${100 + pct(draft.otPremium)}%`} onChange={(n) => setDraft({ ...draft, otPremium: n / 100 })} />
-            <FormulaField label="Night differential" value={pct(draft.nightDiff)} suffix="%" onChange={(n) => setDraft({ ...draft, nightDiff: n / 100 })} />
+            <FormulaField label="Night differential" value={pct(draft.nightDiff)} suffix="%" hint={`= +${pct(draft.nightDiff)}% · 10 PM–6 AM`} onChange={(n) => setDraft({ ...draft, nightDiff: n / 100 })} />
             <FormulaField label="Regular holiday premium" value={pct(draft.regHolidayPremium)} suffix="%" hint={`= pay ${100 + pct(draft.regHolidayPremium)}% worked`} onChange={(n) => setDraft({ ...draft, regHolidayPremium: n / 100 })} />
             <FormulaField label="Special holiday premium" value={pct(draft.specialHolidayPremium)} suffix="%" hint={`= pay ${100 + pct(draft.specialHolidayPremium)}% worked`} onChange={(n) => setDraft({ ...draft, specialHolidayPremium: n / 100 })} />
             <FormulaField label="De-minimis cap (₱/mo)" value={draft.deMinimisCap} suffix="₱" hint="0 = no cap · excess is taxable" onChange={(n) => setDraft({ ...draft, deMinimisCap: Math.max(0, n) })} />
@@ -486,11 +492,17 @@ export function PayrollTab({ allowed, companyId, managerName }: { allowed: Set<s
                       </Text>
                     </View>
                     <Text style={[styles.td, styles.cNum]}>{r.slip.daysPresent}</Text>
-                    <Text style={[styles.td, styles.cMoney]}>{peso(r.slip.grossPay)}</Text>
+                    <Text style={[styles.td, styles.cMoney]}>{peso(r.slip.grossPay + scOf(r.id))}</Text>
                     <Text style={[styles.td, styles.cMoney, styles.dedVal]}>−{peso(r.slip.totalDeductions)}</Text>
-                    <Text style={[styles.td, styles.cMoney, styles.netVal]}>{peso(r.slip.netPay)}</Text>
+                    <Text style={[styles.td, styles.cMoney, styles.netVal]}>{peso(r.slip.netPay + scOf(r.id))}</Text>
                   </Pressable>
-                  {open && <Payslip slip={r.slip} />}
+                  {open && (
+                    <Payslip
+                      slip={r.slip}
+                      serviceCharge={scOf(r.id)}
+                      onServiceCharge={(v) => setScByEmp((m) => ({ ...m, [r.id]: v }))}
+                    />
+                  )}
                 </View>
               );
             })}
@@ -504,7 +516,7 @@ export function PayrollTab({ allowed, companyId, managerName }: { allowed: Set<s
 }
 
 // ── Expanded per-employee payslip ────────────────────────────────────────────
-function Payslip({ slip }: { slip: PayslipData }) {
+function Payslip({ slip, serviceCharge, onServiceCharge }: { slip: PayslipData; serviceCharge: number; onServiceCharge: (v: number) => void }) {
   return (
     <View style={styles.payslip}>
       <View style={styles.payslipCols}>
@@ -522,7 +534,28 @@ function Payslip({ slip }: { slip: PayslipData }) {
           {slip.leavePay > 0 && <LineItem label="Leave pay" detail={`${slip.paidLeaveDays} paid leave day${slip.paidLeaveDays === 1 ? "" : "s"}`} value={peso(slip.leavePay)} />}
           {slip.allowanceTaxable > 0 && <LineItem label="Taxable allowance" detail="monthly, taxable" value={peso(slip.allowanceTaxable)} />}
           {slip.deMinimis > 0 && <LineItem label="De-minimis" detail="monthly, non-taxable" value={peso(slip.deMinimis)} />}
-          <LineItem label="Gross Pay" value={peso(slip.grossPay)} strong />
+          {/* Manual service charge — entered by HR (RA 11360 distribution). */}
+          <View style={styles.scRow}>
+            <View style={styles.lineLabelWrap}>
+              <Text style={styles.lineLabel}>Service charge</Text>
+              <Text style={styles.lineDetail}>manual entry · added to net</Text>
+            </View>
+            <View style={styles.scInputWrap}>
+              <Text style={styles.scPeso}>₱</Text>
+              <TextInput
+                style={styles.scInput}
+                keyboardType="numeric"
+                value={serviceCharge ? String(serviceCharge) : ""}
+                placeholder="0"
+                placeholderTextColor={Colors.textPlaceholder}
+                onChangeText={(t) => {
+                  const n = parseFloat(t.replace(/[^0-9.]/g, ""));
+                  onServiceCharge(Number.isFinite(n) ? Math.max(0, n) : 0);
+                }}
+              />
+            </View>
+          </View>
+          <LineItem label="Gross Pay" value={peso(slip.grossPay + serviceCharge)} strong />
         </View>
 
         <View style={styles.payslipCol}>
@@ -540,7 +573,7 @@ function Payslip({ slip }: { slip: PayslipData }) {
 
       <View style={styles.netBar}>
         <Text style={styles.netBarLabel}>NET PAY</Text>
-        <Text style={styles.netBarValue}>{peso(slip.netPay)}</Text>
+        <Text style={styles.netBarValue}>{peso(slip.netPay + serviceCharge)}</Text>
       </View>
 
       <View style={styles.employerNote}>
@@ -593,7 +626,7 @@ const pct = (f: number) => Math.round(f * 100);
 function FormulaField({ label, value, suffix, hint, onChange }: { label: string; value: number; suffix?: string; hint?: string; onChange: (n: number) => void }) {
   return (
     <View style={styles.ff}>
-      <Text style={styles.ffLabel}>{label}</Text>
+      <Text style={styles.ffLabel} numberOfLines={2}>{label}</Text>
       <View style={styles.ffInputRow}>
         <TextInput
           style={styles.ffInput}
@@ -606,7 +639,8 @@ function FormulaField({ label, value, suffix, hint, onChange }: { label: string;
         />
         {suffix ? <Text style={styles.ffSuffix}>{suffix}</Text> : null}
       </View>
-      {hint ? <Text style={styles.ffHint}>{hint}</Text> : null}
+      {/* Always render the hint slot so every field lines up to the same height. */}
+      <Text style={styles.ffHint} numberOfLines={1}>{hint || " "}</Text>
     </View>
   );
 }
@@ -621,16 +655,30 @@ function FormulaRef({ label, f }: { label: string; f: string }) {
 }
 
 const styles = StyleSheet.create({
-  formulaToggle: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 12, paddingHorizontal: 4 },
-  formulaToggleText: { flex: 1, fontSize: 13, fontWeight: "800", color: Colors.textBody },
+  formulaToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    alignSelf: "flex-start",
+    marginVertical: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: Colors.warmBorder,
+    backgroundColor: Colors.cardSurface,
+  },
+  formulaToggleActive: { borderColor: Colors.primary, backgroundColor: Colors.primaryTint },
+  formulaToggleText: { fontSize: 13, fontWeight: "700", color: Colors.textBody },
   formulaHead: { fontSize: 12, fontWeight: "800", color: Colors.textSubtle, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10 },
   formulaGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
-  ff: { flexGrow: 1, flexBasis: 150 },
-  ffLabel: { fontSize: 12, fontWeight: "700", color: Colors.textBody, marginBottom: 6 },
+  ff: { flexGrow: 1, flexBasis: 158 },
+  // Fixed label height (fits up to 2 lines) so every input row lines up.
+  ffLabel: { fontSize: 12, fontWeight: "700", color: Colors.textBody, marginBottom: 6, minHeight: 32, lineHeight: 15 },
   ffInputRow: { flexDirection: "row", alignItems: "center", gap: 6, height: 44, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, borderColor: Colors.warmBorder, backgroundColor: Colors.warmSurface },
   ffInput: { flex: 1, fontSize: 15, color: Colors.textPrimary, fontWeight: "700", outlineStyle: "none" } as object,
   ffSuffix: { fontSize: 13, color: Colors.textFaint, fontWeight: "700" },
-  ffHint: { fontSize: 11, color: Colors.textFaint, marginTop: 4 },
+  ffHint: { fontSize: 11, color: Colors.textFaint, marginTop: 5, minHeight: 15 },
   formulaActions: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 16, flexWrap: "wrap" },
   formulaMsg: { flex: 1, fontSize: 13, fontWeight: "700", color: Colors.success },
   resetBtn: { height: 42, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, borderColor: Colors.warmBorder, backgroundColor: Colors.cardSurface, alignItems: "center", justifyContent: "center" },
@@ -710,6 +758,10 @@ const styles = StyleSheet.create({
   payslipCol: { flexGrow: 1, flexBasis: 220 },
   payslipHead: { fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.6, color: Colors.textSubtle, marginBottom: 8 },
   lineItem: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", paddingVertical: 5 },
+  scRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 5 },
+  scInputWrap: { flexDirection: "row", alignItems: "center", gap: 4, height: 34, minWidth: 96, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: Colors.primary, backgroundColor: Colors.cardSurface },
+  scPeso: { fontSize: 13, color: Colors.textMuted, fontWeight: "700" },
+  scInput: { flex: 1, fontSize: 14, fontWeight: "800", color: Colors.primary, textAlign: "right", fontVariant: ["tabular-nums"], outlineStyle: "none" } as object,
   lineItemStrong: { borderTopWidth: 1, borderTopColor: Colors.warmBorder, marginTop: 4, paddingTop: 7 },
   lineLabelWrap: { flex: 1, paddingRight: 10 },
   lineDetail: { fontSize: 11, color: Colors.textFaint, marginTop: 1 },

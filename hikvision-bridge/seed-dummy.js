@@ -105,9 +105,11 @@ function weekly(workShift, restDays) {
 }
 
 function profileFor(index, monthStartYMD) {
+  // Mostly a normal Mon–Sat 09:00–18:00 week (kinds 0 and 4 → ~40% of staff), with
+  // realistic variety: some split shifts, night closers, and rotating rest days.
   const kind = index % 5;
   if (kind === 1) {
-    // Split / broken shift (gap acts as the break → no meal-break punches)
+    // Split / broken shift (the mid-afternoon gap acts as the break)
     const s = shift(null, null, [{ start: "10:00", end: "14:00" }, { start: "17:00", end: "22:00" }]);
     return { label: "split", weekly: weekly(s, [0]), restRotation: null, breakStart: null, breakEnd: null };
   }
@@ -127,12 +129,7 @@ function profileFor(index, monthStartYMD) {
       breakEnd: "13:00",
     };
   }
-  if (kind === 4) {
-    // 5-day week (Sat + Sun off)
-    const s = shift("09:00", "18:00");
-    return { label: "5-day", weekly: weekly(s, [0, 6]), restRotation: null, breakStart: "12:00", breakEnd: "13:00" };
-  }
-  // Standard restaurant week: Mon–Sat 09:00–18:00, Sun off
+  // Standard restaurant week: Mon–Sat 09:00–18:00, Sunday off (kinds 0 and 4).
   const s = shift("09:00", "18:00");
   return { label: "standard", weekly: weekly(s, [0]), restRotation: null, breakStart: "12:00", breakEnd: "13:00" };
 }

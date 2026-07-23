@@ -449,6 +449,128 @@ export const deviceHealth = onRequest({ secrets: [BIOMETRIC_API_KEY], invoker: "
     res.json({ ok: true, copied, deleted });
     return;
   }
+  // Seed: ?seedpos=1 writes ~45 days of realistic per-branch POS revenue into
+  // pos_daily (Fri/Sat peaks, weekday base) + a labor_cost record for this month
+  // sized to ~20% of revenue, so the Dashboard Owner Insight (Labor Cost Ratio)
+  // shows a believable within-benchmark figure.
+  if (req.query.seedpos) {
+    const esnap = await db.collection("employees").get();
+    const branchName = new Map<string, string>();
+    esnap.docs.forEach((d) => {
+      const b = d.get("branchId");
+      if (typeof b === "string" && b) branchName.set(b, String(d.get("branchName") || b));
+    });
+    const branches = [...branchName.keys()];
+    const nowPH = new Date(Date.now() + 8 * 3_600_000);
+    const month = `${nowPH.getUTCFullYear()}-${String(nowPH.getUTCMonth() + 1).padStart(2, "0")}`;
+    let monthNet = 0;
+    let rows = 0;
+    const batch = db.batch();
+    for (const bId of branches) {
+      for (let i = 0; i < 45; i += 1) {
+        const d = new Date(nowPH.getTime() - i * 86_400_000);
+        const ymd = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+        const dow = d.getUTCDay();
+        const base = dow === 5 || dow === 6 ? 98000 : dow === 0 ? 86000 : 61000; // Fri/Sat peak, Sun mid, weekday base
+        const jitter = Math.round((Math.random() - 0.5) * 16000);
+        const net = Math.max(22000, base + jitter);
+        const gross = Math.round(net * 1.13); // + VAT / pre-discount
+        const sc = Math.round(net * 0.1); // 10% service charge pool
+        batch.set(
+          db.collection("pos_daily").doc(`${bId}_${ymd}`),
+          { branchId: bId, date: ymd, grossSales: gross, netSales: net, serviceChargePool: sc, source: "manual", updatedAt: new Date() },
+          { merge: true },
+        );
+        rows += 1;
+        if (ymd.slice(0, 7) === month) monthNet += net;
+      }
+    }
+    await batch.commit();
+    const grossPayroll = Math.round(monthNet * 0.18);
+    const employer = Math.round(monthNet * 0.02);
+    await db.collection("labor_cost").doc(`qui_${month}`).set(
+      { companyId: "qui", month, grossPayroll, employerContributions: employer, updatedAt: new Date() },
+      { merge: true },
+    );
+    res.json({ ok: true, branches: branches.length, posRows: rows, month, monthlyRevenue: monthNet, laborCost: grossPayroll + employer, ratioPct: Math.round(((grossPayroll + employer) / monthNet) * 1000) / 10 });
+    return;
+  }
+  // Fix: ?enablealerts=1 flips enabled=true on every attendance_alert_settings doc
+  // so the scheduled digest actually fires (the cron only processes enabled ones).
+  if (req.query.enablealerts) {
+    const snap = await db.collection("attendance_alert_settings").get();
+    const on: string[] = [];
+    for (const d of snap.docs) {
+      await d.ref.set({ enabled: true, updatedAt: new Date() }, { merge: true });
+      on.push(d.id);
+    }
+    res.json({ ok: true, enabled: on });
+    return;
+  }
+  // Diagnostics: ?alertcfg=1 dumps attendance_alert_settings so an "auto SMS didn't
+  // fire" report can be checked (enabled? checkHour? recipients?).
+  if (req.query.alertcfg) {
+    const snap = await db.collection("attendance_alert_settings").get();
+    const nowHourPH = new Date(Date.now() + 8 * 3_600_000).getUTCHours();
+    res.json({
+      nowHourPH,
+      settings: snap.docs.map((d) => ({
+        id: d.id,
+        enabled: d.get("enabled") === true,
+        checkHour: d.get("checkHour") ?? null,
+        recipients: Array.isArray(d.get("recipientPhones")) ? d.get("recipientPhones").length : 0,
+        minPresentPerBranch: d.get("minPresentPerBranch") ?? null,
+      })),
+    });
+    return;
+  }
+  // Seed/fix: ?fixformula=1 writes the pay-computation formula onto organization/qui
+  // with semi-monthly cutoffs but contributions SPLIT 50/50 across both cutoffs, so
+  // SSS/PhilHealth/Pag-IBIG/withholding show on every payroll register (not just the
+  // 2nd cutoff).
+  if (req.query.fixformula) {
+    const formula = {
+      hoursPerDay: 8,
+      otPremium: 0.25,
+      nightDiff: 0.1,
+      regHolidayPremium: 1.0,
+      specialHolidayPremium: 0.3,
+      payFrequency: "semimonthly",
+      cutoffDay: 15,
+      contributionOn: "split",
+      deMinimisCap: 0,
+    };
+    await db.collection("organization").doc("qui").set({ payrollFormula: formula, payrollFormulaUpdatedAt: new Date() }, { merge: true });
+    res.json({ ok: true, formula });
+    return;
+  }
+  // Maintenance: ?cleanjunk=1 removes employee docs whose email isn't @qui.local
+  // (test/signup leftovers), plus any with no email — the canonical roster all use
+  // @qui.local. Attendance/schedules keyed to those ids are removed too.
+  if (req.query.cleanjunk) {
+    // Canonical roster ids (seed-accounts.js). Anything else is a test/signup leftover.
+    const VALID = new Set([
+      "ADMIN-001", "HR-001", "AREA-001", "MGR-001", "MGR-002", "MGR-003", "MGR-004",
+      "EMP-1001", "EMP-1002", "EMP-1003", "EMP-1004", "EMP-1005", "EMP-1006", "EMP-1007",
+      "EMP-1008", "EMP-1009", "EMP-1010", "EMP-1011", "EMP-1012", "EMP-1013",
+    ]);
+    const esnap = await db.collection("employees").get();
+    const removed: string[] = [];
+    for (const d of esnap.docs) {
+      const email = String(d.get("email") || "").toLowerCase();
+      if (VALID.has(d.id)) continue;
+      // Delete the employee's attendance + schedule, then the employee doc.
+      const att = await db.collection("attendance").where("employeeId", "==", d.id).get();
+      const batch = db.batch();
+      att.docs.forEach((a) => batch.delete(a.ref));
+      batch.delete(db.collection("schedules").doc(d.id));
+      batch.delete(d.ref);
+      await batch.commit();
+      removed.push(`${d.id} (${email || "no email"})`);
+    }
+    res.json({ ok: true, removed });
+    return;
+  }
   // Diagnostics: ?branches=1 dumps org branches + employee branch assignments so
   // a branchId ↔ org-branch mismatch (why geofencing fails) can be pinpointed.
   if (req.query.branches) {
@@ -461,7 +583,7 @@ export const deviceHealth = onRequest({ secrets: [BIOMETRIC_API_KEY], invoker: "
       lng: d.get("longitude") ?? null,
       radius: d.get("radiusMeters") ?? null,
     }));
-    const employees = esnap.docs.map((d) => ({ id: d.id, name: d.get("fullName") || `${d.get("firstName") || ""} ${d.get("lastName") || ""}`.trim(), branchId: d.get("branchId") ?? null, branchName: d.get("branchName") ?? null }));
+    const employees = esnap.docs.map((d) => ({ id: d.id, name: d.get("fullName") || `${d.get("firstName") || ""} ${d.get("lastName") || ""}`.trim(), email: d.get("email") ?? null, branchId: d.get("branchId") ?? null, branchName: d.get("branchName") ?? null }));
     res.json({ branchCount: branches.length, branches, employees });
     return;
   }
@@ -478,6 +600,7 @@ export const deviceHealth = onRequest({ secrets: [BIOMETRIC_API_KEY], invoker: "
       lastSeenAgeSec: ageSec,
       live: x.online === true && lastMs !== null && now - lastMs <= 120000,
       queueDepth: typeof x.queueDepth === "number" ? x.queueDepth : 0,
+      lastError: typeof x.lastError === "string" ? x.lastError : null,
     };
   });
   // Latest punches, to confirm scans are flowing in real time.

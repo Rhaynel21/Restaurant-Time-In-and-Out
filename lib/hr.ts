@@ -61,6 +61,7 @@ export type EmployeeMaster = {
   cashAdvance: number; // cash advance / other recurring deduction
   loans: Loan[]; // amortizing loans with a derived running balance
   status: EmployeeStatus;
+  inactiveReason: string; // why the employee became inactive (resigned, terminated, AWOL…) — blank when active
   // ── 201 file: personal details ──
   birthDate: string | null; // YYYY-MM-DD
   gender: Gender;
@@ -123,6 +124,7 @@ function toMaster(id: string, data: Record<string, unknown>): EmployeeMaster {
     cashAdvance: typeof data.cashAdvance === "number" ? data.cashAdvance : 0,
     loans: coerceLoans(data.loans),
     status: data.status === "inactive" ? "inactive" : "active",
+    inactiveReason: typeof data.inactiveReason === "string" ? data.inactiveReason : "",
     birthDate: typeof data.birthDate === "string" ? data.birthDate : null,
     gender: (["male", "female", "other"].includes(data.gender as string) ? data.gender : "") as Gender,
     civilStatus: (["single", "married", "widowed", "separated"].includes(data.civilStatus as string)
@@ -169,6 +171,7 @@ export function blankEmployee(): EmployeeMaster {
     cashAdvance: 0,
     loans: [],
     status: "active",
+    inactiveReason: "",
     birthDate: null,
     gender: "",
     civilStatus: "",
@@ -250,6 +253,7 @@ export async function saveEmployeeMaster(rec: EmployeeMaster, updatedBy: string)
       cashAdvance: rec.cashAdvance,
       loans: rec.loans,
       status: rec.status,
+      inactiveReason: rec.status === "inactive" ? rec.inactiveReason.trim() : "",
       birthDate: rec.birthDate,
       gender: rec.gender,
       civilStatus: rec.civilStatus,

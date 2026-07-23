@@ -3,16 +3,37 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { BarChart, BarDatum } from "@/components/manager/BarChart";
-import { Badge, Button, Card, EmptyState, SectionTitle, StatTile, StatTone } from "@/components/manager/ui";
+import { Badge, Button, Card, EmptyState, InlineMessage, SectionTitle, StatTile, StatTone } from "@/components/manager/ui";
 import { WorkforceTab } from "@/components/manager/WorkforceTab";
 import { ManagerColors as Colors } from "@/constants/theme";
 import { AttendanceRecord, getAttendanceSince, subscribeAllTodayAttendance } from "@/lib/attendance";
 import { AttendanceAlertSettings, defaultAttendanceAlertSettings, saveAttendanceAlertSettings, sendAttendanceAlertNow, subscribeAttendanceAlertSettings } from "@/lib/attendance-alerts";
+import { subscribeAllRequests } from "@/lib/attendance-requests";
 import { EmployeeMaster, subscribeEmployeeMasters } from "@/lib/hr";
 import { LaborCost, laborCostRatioPct, laborCostTotal, ratioVerdict, setManualRevenue, subscribeLaborCost } from "@/lib/labor-cost";
+import { subscribeAllLeaves } from "@/lib/leaves";
 import { inScope } from "@/lib/org";
 import { PosDaily, subscribePosDaily, sumPos } from "@/lib/pos";
-import { Schedule, effectiveShift, emptySchedule, getAllSchedules } from "@/lib/schedules";
+import { Schedule, effectiveShift, emptySchedule, getAllSchedules, shiftBlocks } from "@/lib/schedules";
+
+// Minutes worked on a record, overnight-aware, capped at 16h (forgotten time-out).
+function workedMins(r: AttendanceRecord): number {
+  if (!r.checkOutAt) return 0;
+  let m = Math.round((r.checkOutAt.getTime() - r.checkInAt.getTime()) / 60000);
+  if (m < 0) m += 24 * 60;
+  return Math.min(Math.max(0, m), 16 * 60);
+}
+// Is a punch late vs the employee's scheduled start for that day (15-min grace)?
+function lateVsSchedule(sched: Schedule, checkIn: Date): boolean {
+  const ymd = `${checkIn.getFullYear()}-${String(checkIn.getMonth() + 1).padStart(2, "0")}-${String(checkIn.getDate()).padStart(2, "0")}`;
+  const shift = effectiveShift(sched, ymd);
+  if (shift.off) return false;
+  const blocks = shiftBlocks(shift);
+  if (!blocks.length) return false;
+  const [sh, sm] = blocks[0].start.split(":").map(Number);
+  if (!Number.isFinite(sh) || !Number.isFinite(sm)) return false;
+  return checkIn.getHours() * 60 + checkIn.getMinutes() > sh * 60 + sm + 15;
+}
 
 function currentMonthValue() {
   const d = new Date();
@@ -105,6 +126,23 @@ export function DashboardTab({
   // employees with no saved schedule fall back to the default Mon–Sat week.
   const [roster, setRoster] = useState<EmployeeMaster[]>([]);
   useEffect(() => subscribeEmployeeMasters(setRoster, () => setRoster([])), []);
+  // Pending OT/DTR-correction + leave requests, in scope, for the action center.
+  const [reqPending, setReqPending] = useState(0);
+  const [leavePendingLive, setLeavePendingLive] = useState(0);
+  useEffect(
+    () => subscribeAllRequests(
+      (rs) => setReqPending(rs.filter((r) => r.status === "pending" && inScope(r.branchId, allowed)).length),
+      () => setReqPending(0),
+    ),
+    [allowed],
+  );
+  useEffect(
+    () => subscribeAllLeaves(
+      (ls) => setLeavePendingLive(ls.filter((l) => l.status === "pending" && inScope(l.branchId, allowed)).length),
+      () => setLeavePendingLive(0),
+    ),
+    [allowed],
+  );
   const [schedules, setSchedules] = useState<Map<string, Schedule>>(new Map());
   useEffect(() => {
     getAllSchedules().then(setSchedules).catch(() => setSchedules(new Map()));
@@ -314,6 +352,57 @@ export function DashboardTab({
       .sort((a, b) => b.value - a.value);
   }, [rows]);
 
+  // ── This Week: totals across the last 7 days of punches ──
+  const weekStats = useMemo(() => {
+    const inWeek = week.filter((r) => inScope(r.branchId, allowed));
+    let minutes = 0;
+    let shifts = 0;
+    let lates = 0;
+    const emps = new Set<string>();
+    for (const r of inWeek) {
+      emps.add(r.employeeId);
+      minutes += workedMins(r);
+      if (r.checkOutAt) shifts += 1;
+      if (lateVsSchedule(schedules.get(r.employeeId) ?? emptySchedule(r.employeeId), r.checkInAt)) lates += 1;
+    }
+    return { hours: minutes / 60, shifts, lates, employees: emps.size };
+  }, [week, allowed, schedules]);
+
+  // ── Branch comparison: present today + week hours + this month's revenue ──
+  const branchStats = useMemo(() => {
+    const names = new Map<string, string>();
+    const present = new Map<string, Set<string>>();
+    rows.forEach((r) => {
+      const k = r.branchId || r.branchName;
+      names.set(k, r.branchName || k);
+      if (!present.has(k)) present.set(k, new Set());
+      present.get(k)!.add(r.employeeId);
+    });
+    const hours = new Map<string, number>();
+    week.filter((r) => inScope(r.branchId, allowed)).forEach((r) => {
+      const k = r.branchId || r.branchName;
+      names.set(k, r.branchName || names.get(k) || k);
+      hours.set(k, (hours.get(k) || 0) + workedMins(r));
+    });
+    const revenue = new Map<string, number>();
+    posRows.forEach((p) => revenue.set(p.branchId, (revenue.get(p.branchId) || 0) + p.netSales));
+    return [...new Set([...names.keys(), ...revenue.keys()])]
+      .map((k) => ({ key: k, name: names.get(k) || k, present: present.get(k)?.size || 0, hours: (hours.get(k) || 0) / 60, revenue: revenue.get(k) || 0 }))
+      .sort((a, b) => b.revenue - a.revenue || b.present - a.present);
+  }, [rows, week, posRows, allowed]);
+
+  // ── Needs Attention: actionable counts, worst first ──
+  const attention = useMemo(
+    () =>
+      [
+        { key: "leaves", label: "Leave approvals", sub: "awaiting review", count: leavePendingLive || pendingCount, icon: "checkbox-marked-circle-outline" as MdIcon },
+        { key: "requests", label: "OT / DTR corrections", sub: "awaiting review", count: reqPending, icon: "clock-edit-outline" as MdIcon },
+        { key: "alarms", label: "Device alarms", sub: "unacknowledged", count: alarmCount, icon: "shield-alert-outline" as MdIcon },
+        { key: "absent", label: "Absent today", sub: "scheduled, no time-in", count: absent, icon: "account-alert-outline" as MdIcon },
+      ].filter((a) => a.count > 0),
+    [leavePendingLive, pendingCount, reqPending, alarmCount, absent],
+  );
+
   // Time-ins bucketed by hour (6am–9pm), from today's punches.
   const hourData: BarDatum[] = useMemo(() => {
     const START = 6;
@@ -392,11 +481,48 @@ export function DashboardTab({
         </View>
       </View>
 
+      {attention.length > 0 && (
+        <View style={styles.attentionCard}>
+          <View style={styles.attentionHead}>
+            <MaterialCommunityIcons name="alert-decagram-outline" size={18} color={Colors.warningDeep} />
+            <Text style={styles.attentionTitle}>Needs Attention</Text>
+          </View>
+          <View style={styles.attentionRow}>
+            {attention.map((a) => (
+              <View key={a.key} style={styles.attentionItem}>
+                <View style={styles.attentionIconWrap}>
+                  <MaterialCommunityIcons name={a.icon} size={17} color={Colors.warningDeep} />
+                </View>
+                <View style={styles.grow}>
+                  <Text style={styles.attentionCount}>{a.count}</Text>
+                  <Text style={styles.attentionLabel} numberOfLines={1}>{a.label}</Text>
+                  <Text style={styles.attentionSub} numberOfLines={1}>{a.sub}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
+
       <View style={styles.grid}>
         {stats.map((s) => (
           <StatTile key={s.label} label={s.label} value={s.value} sub={s.sub} icon={s.icon} tone={s.tone} />
         ))}
       </View>
+
+      <Card style={styles.weekCard}>
+        <View style={styles.weekHead}>
+          <MaterialCommunityIcons name="calendar-week" size={16} color={Colors.primary} />
+          <Text style={styles.weekTitle}>This Week</Text>
+          <Text style={styles.weekSub}>last 7 days</Text>
+        </View>
+        <View style={styles.weekStatsRow}>
+          <WeekStat value={weekStats.hours % 1 === 0 ? String(weekStats.hours) : weekStats.hours.toFixed(1)} unit="h" label="Hours logged" />
+          <WeekStat value={String(weekStats.shifts)} label="Shifts done" />
+          <WeekStat value={String(weekStats.employees)} label="Active staff" />
+          <WeekStat value={String(weekStats.lates)} label="Late arrivals" warn={weekStats.lates > 0} />
+        </View>
+      </Card>
 
       {!companyId ? (
         <Card style={styles.alertCard}>
@@ -477,7 +603,20 @@ export function DashboardTab({
             </View>
           ))}
         </View>
-        {alertMessage ? <Text style={styles.alertMessage}>{alertMessage}</Text> : null}
+        {alertMessage ? (
+          <View style={{ marginTop: 10 }}>
+            <InlineMessage
+              text={alertMessage}
+              tone={
+                /fail|unavailable|blocked|before|first|at least|select|enter a valid|no sms/i.test(alertMessage)
+                  ? "error"
+                  : /sent|saved|✓/i.test(alertMessage)
+                    ? "success"
+                    : "info"
+              }
+            />
+          </View>
+        ) : null}
       </Card>
       )}
 
@@ -557,6 +696,30 @@ export function DashboardTab({
                 </Text>
               </View>
               <Text style={styles.perfHours}>{Math.floor(p.minutes / 60)}h {p.minutes % 60}m</Text>
+            </View>
+          ))}
+        </Card>
+      )}
+
+      {branchStats.length > 0 && (
+        <Card style={styles.branchCmpCard}>
+          <View style={styles.branchCmpHead}>
+            <MaterialCommunityIcons name="store-outline" size={16} color={Colors.primary} />
+            <Text style={styles.branchCmpTitle}>Branch Comparison</Text>
+            <Text style={styles.branchCmpSub}>present · 7-day hrs · month revenue</Text>
+          </View>
+          <View style={[styles.branchCmpRow, styles.branchCmpHeadRow]}>
+            <Text style={[styles.branchCmpCell, styles.bcName, styles.branchCmpTh]}>Branch</Text>
+            <Text style={[styles.branchCmpCell, styles.bcNum, styles.branchCmpTh]}>Present</Text>
+            <Text style={[styles.branchCmpCell, styles.bcNum, styles.branchCmpTh]}>7-day hrs</Text>
+            <Text style={[styles.branchCmpCell, styles.bcMoney, styles.branchCmpTh]}>Revenue</Text>
+          </View>
+          {branchStats.map((b, i) => (
+            <View key={b.key} style={[styles.branchCmpRow, i < branchStats.length - 1 && styles.branchCmpBorder]}>
+              <Text style={[styles.branchCmpCell, styles.bcName]} numberOfLines={1}>{b.name}</Text>
+              <Text style={[styles.branchCmpCell, styles.bcNum, b.present === 0 && styles.bcZero]}>{b.present}</Text>
+              <Text style={[styles.branchCmpCell, styles.bcNum]}>{b.hours % 1 === 0 ? b.hours : b.hours.toFixed(1)}</Text>
+              <Text style={[styles.branchCmpCell, styles.bcMoney]}>{b.revenue > 0 ? peso(b.revenue) : "—"}</Text>
             </View>
           ))}
         </Card>
@@ -666,7 +829,57 @@ const cardShadow = {
   elevation: 1,
 } as const;
 
+function WeekStat({ value, unit, label, warn }: { value: string; unit?: string; label: string; warn?: boolean }) {
+  return (
+    <View style={styles.weekStat}>
+      <Text style={[styles.weekStatValue, warn && styles.weekStatWarn]}>
+        {value}
+        {unit ? <Text style={styles.weekStatUnit}> {unit}</Text> : null}
+      </Text>
+      <Text style={styles.weekStatLabel} numberOfLines={1}>{label}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  // Needs Attention
+  attentionCard: { backgroundColor: "#FCF3E6", borderWidth: 1, borderColor: "rgba(154,123,63,0.35)", borderRadius: 16, padding: 16, marginBottom: 18 },
+  attentionHead: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 },
+  attentionTitle: { fontSize: 14, fontWeight: "800", color: Colors.textPrimary },
+  attentionRow: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  attentionItem: { flexDirection: "row", alignItems: "center", gap: 10, flexGrow: 1, flexBasis: 200, backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "rgba(0,0,0,0.05)", paddingHorizontal: 12, paddingVertical: 10 },
+  attentionIconWrap: { width: 34, height: 34, borderRadius: 10, backgroundColor: "#FCF3E6", alignItems: "center", justifyContent: "center" },
+  attentionCount: { fontSize: 19, fontWeight: "800", color: Colors.warningDeep, letterSpacing: -0.3, fontVariant: ["tabular-nums"] },
+  attentionLabel: { fontSize: 13, fontWeight: "700", color: Colors.textPrimary, marginTop: -1 },
+  attentionSub: { fontSize: 11, color: Colors.textFaint, marginTop: 1 },
+
+  // This Week
+  weekCard: { marginBottom: 18 },
+  weekHead: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 },
+  weekTitle: { flex: 1, fontSize: 14, fontWeight: "800", color: Colors.textPrimary },
+  weekSub: { fontSize: 11, fontWeight: "700", color: Colors.textFaint, textTransform: "uppercase", letterSpacing: 0.4 },
+  weekStatsRow: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  weekStat: { flexGrow: 1, flexBasis: 110, minWidth: 96, backgroundColor: Colors.warmSurface, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
+  weekStatValue: { fontSize: 22, fontWeight: "800", color: Colors.textPrimary, letterSpacing: -0.5, fontVariant: ["tabular-nums"] },
+  weekStatWarn: { color: Colors.warningDeep },
+  weekStatUnit: { fontSize: 13, fontWeight: "700", color: Colors.textFaint },
+  weekStatLabel: { fontSize: 11, color: Colors.textFaint, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.4, marginTop: 3 },
+
+  // Branch comparison
+  branchCmpCard: { marginBottom: 18 },
+  branchCmpHead: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 },
+  branchCmpTitle: { flex: 1, fontSize: 14, fontWeight: "800", color: Colors.textPrimary },
+  branchCmpSub: { fontSize: 11, fontWeight: "700", color: Colors.textFaint, textTransform: "uppercase", letterSpacing: 0.4 },
+  branchCmpRow: { flexDirection: "row", alignItems: "center", paddingVertical: 10, gap: 8 },
+  branchCmpHeadRow: { paddingVertical: 6 },
+  branchCmpBorder: { borderBottomWidth: 1, borderBottomColor: Colors.hairline },
+  branchCmpTh: { fontSize: 11, fontWeight: "800", color: Colors.textSubtle, textTransform: "uppercase", letterSpacing: 0.4 },
+  branchCmpCell: { fontSize: 13.5, color: Colors.textPrimary, fontVariant: ["tabular-nums"] },
+  bcName: { flex: 1, minWidth: 0, fontWeight: "700" },
+  bcNum: { width: 72, textAlign: "right" },
+  bcMoney: { width: 110, textAlign: "right", fontWeight: "700" },
+  bcZero: { color: Colors.danger, fontWeight: "800" },
+
   header: {
     flexDirection: "row",
     alignItems: "stretch",
