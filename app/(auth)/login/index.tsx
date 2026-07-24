@@ -199,13 +199,6 @@ export default function LoginScreen() {
           </TouchableOpacity>
 
           {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
-
-          <View style={styles.signupRow}>
-            <Text style={styles.signupHint}>New here?</Text>
-            <Pressable onPress={() => router.push("/signup" as never)} hitSlop={6}>
-              <Text style={styles.signupLink}>Create a staff account</Text>
-            </Pressable>
-          </View>
         </View>
 
         <View style={styles.footerWrap}>
@@ -380,22 +373,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.danger,
     fontWeight: "600",
-  },
-  signupRow: {
-    marginTop: 20,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 6,
-  },
-  signupHint: {
-    fontSize: 13,
-    color: Colors.textSubtle,
-  },
-  signupLink: {
-    fontSize: 13,
-    color: Colors.primary,
-    fontWeight: "700",
   },
   footerWrap: {
     marginTop: 32,
