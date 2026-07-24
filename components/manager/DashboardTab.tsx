@@ -101,16 +101,19 @@ export function DashboardTab({
   alarmCount,
   allowed,
   companyId,
+  onNavigate,
 }: {
   managerName: string;
   pendingCount: number;
   alarmCount: number;
   allowed: Set<string> | null;
   companyId: string | null;
+  onNavigate?: (target: "approvals" | "requests" | "devices" | "attendance") => void;
 }) {
   const [allRows, setAllRows] = useState<AttendanceRecord[]>([]);
   useEffect(() => subscribeAllTodayAttendance(setAllRows, () => setAllRows([])), []);
   const rows = useMemo(() => allRows.filter((r) => inScope(r.branchId, allowed)), [allRows, allowed]);
+  const [selectedMetric, setSelectedMetric] = useState<string | null>(null);
 
   // Last 7 days of punches, fetched once for the trend chart.
   const [week, setWeek] = useState<AttendanceRecord[]>([]);
@@ -273,18 +276,19 @@ export function DashboardTab({
 
   // Absent today: active, in-scope employees scheduled to work today (effective
   // shift not a rest day) who have not punched in.
-  const absent = useMemo(() => {
+  const absentEmployees = useMemo(() => {
     const now = new Date();
     const ymd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     const present = new Set(rows.map((r) => r.employeeId));
-    let n = 0;
+    const employees: EmployeeMaster[] = [];
     for (const e of roster) {
       if (e.status !== "active" || !inScope(e.branchId, allowed)) continue;
       const sched = schedules.get(e.employeeId) ?? emptySchedule(e.employeeId);
-      if (!effectiveShift(sched, ymd).off && !present.has(e.employeeId)) n += 1;
+      if (!effectiveShift(sched, ymd).off && !present.has(e.employeeId)) employees.push(e);
     }
-    return n;
+    return employees.sort((a, b) => a.fullName.localeCompare(b.fullName));
   }, [roster, schedules, rows, allowed]);
+  const absent = absentEmployees.length;
 
   // ── Step 8: Owner Insight — Labor Cost Ratio (this month) ──
   const insightMonth = currentMonthValue();
@@ -395,10 +399,10 @@ export function DashboardTab({
   const attention = useMemo(
     () =>
       [
-        { key: "leaves", label: "Leave approvals", sub: "awaiting review", count: leavePendingLive || pendingCount, icon: "checkbox-marked-circle-outline" as MdIcon },
-        { key: "requests", label: "OT / DTR corrections", sub: "awaiting review", count: reqPending, icon: "clock-edit-outline" as MdIcon },
-        { key: "alarms", label: "Device alarms", sub: "unacknowledged", count: alarmCount, icon: "shield-alert-outline" as MdIcon },
-        { key: "absent", label: "Absent today", sub: "scheduled, no time-in", count: absent, icon: "account-alert-outline" as MdIcon },
+        { key: "leaves", target: "approvals" as const, label: "Leave approvals", sub: "awaiting review", count: leavePendingLive || pendingCount, icon: "checkbox-marked-circle-outline" as MdIcon },
+        { key: "requests", target: "requests" as const, label: "OT / DTR corrections", sub: "awaiting review", count: reqPending, icon: "clock-edit-outline" as MdIcon },
+        { key: "alarms", target: "devices" as const, label: "Device alarms", sub: "unacknowledged", count: alarmCount, icon: "shield-alert-outline" as MdIcon },
+        { key: "absent", target: "attendance" as const, label: "Absent today", sub: "scheduled, no time-in", count: absent, icon: "account-alert-outline" as MdIcon },
       ].filter((a) => a.count > 0),
     [leavePendingLive, pendingCount, reqPending, alarmCount, absent],
   );
@@ -455,17 +459,55 @@ export function DashboardTab({
     year: "numeric",
   });
 
-  const stats: { label: string; value: string; sub: string; icon: MdIcon; tone: StatTone }[] = [
-    { label: "On shift now", value: String(onShift), sub: `${insight.onShiftPct}% of today's ins`, icon: "account-clock", tone: "in" },
-    { label: "On break", value: String(onBreak), sub: "on meal break", icon: "silverware-fork-knife", tone: "pending" },
-    { label: "Completed shifts", value: String(done), sub: `${insight.completion}% of today's time-ins`, icon: "logout-variant", tone: "out" },
-    { label: "Absent today", value: String(absent), sub: "scheduled, no time-in", icon: "account-alert-outline", tone: "critical" },
-    { label: "Hours logged", value: insight.hoursLogged.toFixed(1), sub: `across ${insight.shiftsCounted} finished shift${insight.shiftsCounted === 1 ? "" : "s"}`, icon: "timer-outline", tone: "neutral" },
-    { label: "Active branches", value: String(insight.activeBranches), sub: "reporting today", icon: "storefront-outline", tone: "in" },
-    { label: "Avg time-in", value: fmtMinOfDay(insight.avgIn), sub: "average clock-in", icon: "clock-fast", tone: "neutral" },
-    { label: "Pending approvals", value: String(pendingCount), sub: "awaiting review", icon: "clipboard-text-clock-outline", tone: "pending" },
-    { label: "Open alarms", value: String(alarmCount), sub: "device alerts", icon: "shield-alert-outline", tone: "critical" },
+  const stats: { key: string; label: string; value: string; sub: string; icon: MdIcon; tone: StatTone; hasDetails?: boolean }[] = [
+    { key: "shift", label: "On shift now", value: String(onShift), sub: `${insight.onShiftPct}% of today's ins`, icon: "account-clock", tone: "in", hasDetails: true },
+    { key: "break", label: "On break", value: String(onBreak), sub: "on meal break", icon: "silverware-fork-knife", tone: "pending", hasDetails: true },
+    { key: "done", label: "Completed shifts", value: String(done), sub: `${insight.completion}% of today's time-ins`, icon: "logout-variant", tone: "out", hasDetails: true },
+    { key: "absent", label: "Absent today", value: String(absent), sub: "scheduled, no time-in", icon: "account-alert-outline", tone: "critical", hasDetails: true },
+    { key: "hours", label: "Hours logged", value: insight.hoursLogged.toFixed(1), sub: `across ${insight.shiftsCounted} finished shift${insight.shiftsCounted === 1 ? "" : "s"}`, icon: "timer-outline", tone: "neutral", hasDetails: true },
+    { key: "branches", label: "Active branches", value: String(insight.activeBranches), sub: "reporting today", icon: "storefront-outline", tone: "in", hasDetails: true },
+    { key: "average", label: "Avg time-in", value: fmtMinOfDay(insight.avgIn), sub: "average clock-in", icon: "clock-fast", tone: "neutral" },
+    { key: "approvals", label: "Pending approvals", value: String(pendingCount), sub: "awaiting review", icon: "clipboard-text-clock-outline", tone: "pending" },
+    { key: "alarms", label: "Open alarms", value: String(alarmCount), sub: "device alerts", icon: "shield-alert-outline", tone: "critical" },
   ];
+
+  type MetricDetail = { id: string; name: string; meta: string; value?: string };
+  const metricDetails = useMemo<Record<string, MetricDetail[]>>(() => {
+    const isOnBreak = (r: AttendanceRecord) => !r.checkOutAt && !!r.breakOutAt && !r.breakInAt;
+    return {
+      shift: rows
+        .filter((r) => !r.checkOutAt && !isOnBreak(r))
+        .map((r) => ({ id: r.id, name: r.employeeName, meta: r.branchName || "Unassigned branch", value: `In ${fmtTime(r.checkInAt)}` })),
+      break: rows
+        .filter(isOnBreak)
+        .map((r) => ({ id: r.id, name: r.employeeName, meta: r.branchName || "Unassigned branch", value: `Since ${fmtTime(r.breakOutAt)}` })),
+      done: rows
+        .filter((r) => !!r.checkOutAt)
+        .map((r) => ({ id: r.id, name: r.employeeName, meta: r.branchName || "Unassigned branch", value: `Out ${fmtTime(r.checkOutAt)}` })),
+      absent: absentEmployees.map((e) => ({
+        id: e.employeeId,
+        name: e.fullName,
+        meta: [e.branchName || "Unassigned branch", e.position].filter(Boolean).join(" · "),
+      })),
+      hours: rows
+        .filter((r) => !!r.checkOutAt)
+        .map((r) => ({
+          id: r.id,
+          name: r.employeeName,
+          meta: r.branchName || "Unassigned branch",
+          value: `${(workedMins(r) / 60).toFixed(1)} h`,
+        }))
+        .sort((a, b) => parseFloat(b.value) - parseFloat(a.value)),
+      branches: byBranch.map((b) => ({
+        id: b.label,
+        name: b.label,
+        meta: `${b.value} employee${b.value === 1 ? "" : "s"} reporting today`,
+      })),
+    };
+  }, [rows, absentEmployees, byBranch]);
+
+  const selectedStat = stats.find((s) => s.key === selectedMetric);
+  const selectedDetails = selectedMetric ? metricDetails[selectedMetric] ?? [] : [];
 
   const branchMax = Math.max(1, ...byBranch.map((b) => b.value));
 
@@ -489,7 +531,13 @@ export function DashboardTab({
           </View>
           <View style={styles.attentionRow}>
             {attention.map((a) => (
-              <View key={a.key} style={styles.attentionItem}>
+              <Pressable
+                key={a.key}
+                onPress={() => onNavigate?.(a.target)}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${a.label}`}
+                style={({ pressed }) => [styles.attentionItem, pressed && styles.attentionItemPressed]}
+              >
                 <View style={styles.attentionIconWrap}>
                   <MaterialCommunityIcons name={a.icon} size={17} color={Colors.warningDeep} />
                 </View>
@@ -498,7 +546,8 @@ export function DashboardTab({
                   <Text style={styles.attentionLabel} numberOfLines={1}>{a.label}</Text>
                   <Text style={styles.attentionSub} numberOfLines={1}>{a.sub}</Text>
                 </View>
-              </View>
+                <MaterialCommunityIcons name="chevron-right" size={18} color={Colors.textFaint} />
+              </Pressable>
             ))}
           </View>
         </View>
@@ -506,9 +555,63 @@ export function DashboardTab({
 
       <View style={styles.grid}>
         {stats.map((s) => (
-          <StatTile key={s.label} label={s.label} value={s.value} sub={s.sub} icon={s.icon} tone={s.tone} />
+          <StatTile
+            key={s.key}
+            label={s.label}
+            value={s.value}
+            sub={s.sub}
+            icon={s.icon}
+            tone={s.tone}
+            selected={selectedMetric === s.key}
+            onPress={s.hasDetails ? () => setSelectedMetric((current) => current === s.key ? null : s.key) : undefined}
+          />
         ))}
       </View>
+
+      {selectedStat && (
+        <View style={styles.metricDetailCard}>
+          <View style={styles.metricDetailHead}>
+            <View style={styles.grow}>
+              <Text style={styles.metricDetailTitle}>{selectedStat.label}</Text>
+              <Text style={styles.metricDetailSub}>
+                {selectedDetails.length === 0
+                  ? "No employees to display"
+                  : `${selectedDetails.length} ${selectedMetric === "branches" ? "active branch" : "employee"}${selectedDetails.length === 1 ? "" : "s"}`}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => setSelectedMetric(null)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Close metric details"
+              style={styles.metricDetailClose}
+            >
+              <MaterialCommunityIcons name="close" size={18} color={Colors.textMuted} />
+            </Pressable>
+          </View>
+          {selectedDetails.length === 0 ? (
+            <View style={styles.metricDetailEmpty}>
+              <MaterialCommunityIcons name="account-check-outline" size={24} color={Colors.textFaint} />
+              <Text style={styles.metricDetailEmptyText}>Nothing to show for this status today.</Text>
+            </View>
+          ) : (
+            <View style={styles.metricDetailList}>
+              {selectedDetails.map((item) => (
+                <View key={item.id} style={styles.metricDetailRow}>
+                  <View style={styles.metricAvatar}>
+                    <Text style={styles.metricAvatarText}>{initials(item.name)}</Text>
+                  </View>
+                  <View style={styles.grow}>
+                    <Text style={styles.metricDetailName} numberOfLines={1}>{item.name}</Text>
+                    <Text style={styles.metricDetailMeta} numberOfLines={1}>{item.meta}</Text>
+                  </View>
+                  {item.value ? <Text style={styles.metricDetailValue}>{item.value}</Text> : null}
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      )}
 
       <Card style={styles.weekCard}>
         <View style={styles.weekHead}>
@@ -654,7 +757,9 @@ export function DashboardTab({
             </View>
           </View>
         ) : laborTotal <= 0 ? (
-          <Text style={styles.insightEmpty}>Release this month&apos;s payroll to capture labor cost, then the ratio appears here.</Text>
+          <Text style={styles.insightEmpty}>
+            No payroll has been released for this month. In Payroll: compute the run, lock its DTR, approve, then release it.
+          </Text>
         ) : (
           <View style={styles.insightBody}>
             <Text style={styles.insightEmpty}>
@@ -848,6 +953,7 @@ const styles = StyleSheet.create({
   attentionTitle: { fontSize: 14, fontWeight: "800", color: Colors.textPrimary },
   attentionRow: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   attentionItem: { flexDirection: "row", alignItems: "center", gap: 10, flexGrow: 1, flexBasis: 200, backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "rgba(0,0,0,0.05)", paddingHorizontal: 12, paddingVertical: 10 },
+  attentionItemPressed: { opacity: 0.78, borderColor: Colors.warningBorder },
   attentionIconWrap: { width: 34, height: 34, borderRadius: 10, backgroundColor: "#FCF3E6", alignItems: "center", justifyContent: "center" },
   attentionCount: { fontSize: 19, fontWeight: "800", color: Colors.warningDeep, letterSpacing: -0.3, fontVariant: ["tabular-nums"] },
   attentionLabel: { fontSize: 13, fontWeight: "700", color: Colors.textPrimary, marginTop: -1 },
@@ -952,6 +1058,51 @@ const styles = StyleSheet.create({
   revBtnText: { color: "#fff", fontWeight: "800", fontSize: 14 },
 
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginBottom: 22 },
+  metricDetailCard: {
+    backgroundColor: Colors.cardSurface,
+    borderWidth: 1,
+    borderColor: Colors.primaryTintStrong,
+    borderRadius: 16,
+    padding: 16,
+    marginTop: -10,
+    marginBottom: 22,
+    ...cardShadow,
+  },
+  metricDetailHead: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 12 },
+  metricDetailTitle: { fontSize: 15, fontWeight: "800", color: Colors.textPrimary },
+  metricDetailSub: { fontSize: 12, fontWeight: "600", color: Colors.textMuted, marginTop: 2 },
+  metricDetailClose: {
+    width: 32,
+    height: 32,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Colors.warmSurface,
+  },
+  metricDetailList: { borderTopWidth: 1, borderTopColor: Colors.hairline },
+  metricDetailRow: {
+    minHeight: 58,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+    paddingVertical: 9,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.hairline,
+  },
+  metricAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Colors.primaryTint,
+  },
+  metricAvatarText: { fontSize: 11, fontWeight: "800", color: Colors.primaryDeep },
+  metricDetailName: { fontSize: 13.5, fontWeight: "700", color: Colors.textPrimary },
+  metricDetailMeta: { fontSize: 11.5, fontWeight: "500", color: Colors.textMuted, marginTop: 2 },
+  metricDetailValue: { fontSize: 12, fontWeight: "700", color: Colors.textMuted, fontVariant: ["tabular-nums"] },
+  metricDetailEmpty: { alignItems: "center", justifyContent: "center", gap: 7, paddingVertical: 22, borderTopWidth: 1, borderTopColor: Colors.hairline },
+  metricDetailEmptyText: { fontSize: 12.5, fontWeight: "600", color: Colors.textMuted },
 
   alertCard: { marginBottom: 18 },
   alertHead: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 },

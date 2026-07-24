@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Badge, Button, Card, Chip, EmptyState, InlineMessage, SectionTitle, Select, TextField } from "@/components/manager/ui";
 import { ManagerColors as Colors } from "@/constants/theme";
@@ -29,6 +29,42 @@ function isLateForShift(sched: Schedule, checkIn: Date): boolean {
 }
 
 type MemoSuggestion = { employeeId: string; name: string; reason: string; templateKey: string; tone: "warn" | "good" };
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function memoPrintHtml({ to, from, date, subject, body }: { to: string; from: string; date: string; subject: string; body: string }) {
+  const row = (label: string, value: string) => `<tr><th>${label}</th><td>:</td><td>${escapeHtml(value || "—")}</td></tr>`;
+  return `<!doctype html>
+<html><head><meta charset="utf-8"><title>${escapeHtml(subject || "Memorandum")}</title>
+<style>
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #fff; color: #171717; font-family: Arial, Helvetica, sans-serif; }
+  .page { width: 210mm; min-height: 297mm; padding: 22mm 20mm 20mm; margin: 0 auto; }
+  h1 { margin: 0 0 12mm; text-align: center; font-size: 15pt; letter-spacing: 3px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 8mm; }
+  th { width: 24mm; padding: 1.3mm 0; text-align: left; font-size: 10pt; letter-spacing: .4px; }
+  td { padding: 1.3mm 0; font-size: 10.5pt; font-weight: 600; vertical-align: top; }
+  td:nth-child(2) { width: 5mm; }
+  .rule { border-top: 1px solid #b9b9b9; margin-bottom: 8mm; }
+  .body { font-family: "Times New Roman", serif; font-size: 11pt; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .signature { margin-top: 18mm; width: 65mm; }
+  .signature-line { border-top: 1px solid #333; padding-top: 2mm; text-align: center; font-size: 9pt; }
+  @media screen { body { background: #e9e9e9; padding: 20px; } .page { background: white; box-shadow: 0 4px 24px rgba(0,0,0,.15); } }
+</style></head><body><main class="page">
+  <h1>MEMORANDUM</h1>
+  <table>${row("TO", to)}${row("FROM", from)}${row("DATE", date)}${subject ? row("SUBJECT", subject) : ""}</table>
+  <div class="rule"></div>
+  <div class="body">${escapeHtml(body || "(memo body will appear here)")}</div>
+  <div class="signature"><div class="signature-line">${escapeHtml(from)}<br>Authorized signatory</div></div>
+</main><script>window.onload=()=>setTimeout(()=>window.print(),250);</script></body></html>`;
+}
 
 export function MemoTab({ managerName, allowed }: { managerName: string; allowed: Set<string> | null }) {
   const [allEmployees, setAllEmployees] = useState<EmployeeSummary[]>([]);
@@ -86,7 +122,7 @@ export function MemoTab({ managerName, allowed }: { managerName: string; allowed
       setSubject(t.subject);
       setContent(t.content);
     }
-    setMessage(`Loaded ${t?.label ?? "template"} for ${s.name} — fill in the blanks before sending.`);
+    setMessage(`Loaded ${t?.label ?? "template"} for ${s.name} — click any [placeholder] and type to replace it.`);
   };
 
   const toggle = (id: string) =>
@@ -99,6 +135,26 @@ export function MemoTab({ managerName, allowed }: { managerName: string; allowed
   const allSelected = employees.length > 0 && recipients.size === employees.length;
   const selectAll = () =>
     setRecipients(allSelected ? new Set() : new Set(employees.map((e) => e.employeeId)));
+
+  const recipientNames = employees.filter((e) => recipients.has(e.employeeId)).map((e) => e.fullName);
+  const memoDate = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  const printMemo = () => {
+    if (Platform.OS !== "web" || typeof window === "undefined") return;
+    const popup = window.open("", "_blank", "width=900,height=1000");
+    if (!popup) {
+      setMessage("Allow pop-ups to open the print preview.");
+      return;
+    }
+    popup.document.write(memoPrintHtml({
+      to: recipientNames.join(", "),
+      from: managerName,
+      date: memoDate,
+      subject,
+      body: content,
+    }));
+    popup.document.close();
+    popup.focus();
+  };
 
   const submit = async (status: MemoStatus) => {
     if (recipients.size === 0) {
@@ -207,7 +263,7 @@ export function MemoTab({ managerName, allowed }: { managerName: string; allowed
               if (t) {
                 setSubject(t.subject);
                 setContent(t.content);
-                setMessage("Template loaded — fill in the blanks (____ and [brackets]) before sending.");
+                setMessage("Template loaded — click any [placeholder] and type to replace it.");
               }
             }}
           />
@@ -215,7 +271,16 @@ export function MemoTab({ managerName, allowed }: { managerName: string; allowed
 
         <View style={styles.formTop}>
           <TextField label="Subject" value={subject} onChangeText={setSubject} placeholder="Memo subject (optional)" />
-          <TextField label="Memo content" value={content} onChangeText={setContent} placeholder="Write your memo here…" multiline />
+          <TextField
+            label="Memo content"
+            value={content}
+            onChangeText={setContent}
+            placeholder="Write your memo here…"
+            multiline
+            autoGrow
+            multilineMinHeight={280}
+            selectBracketedPlaceholder
+          />
         </View>
 
         <View style={styles.actions}>
@@ -227,26 +292,39 @@ export function MemoTab({ managerName, allowed }: { managerName: string; allowed
 
       {(subject.trim() || content.trim()) ? (
         <>
-          <SectionTitle>Preview</SectionTitle>
-          <Card style={styles.previewCard}>
-            <Text style={styles.previewTitle}>MEMORANDUM</Text>
-            <View style={styles.previewMeta}>
-              {[
-                { k: "TO", v: employees.filter((e) => recipients.has(e.employeeId)).map((e) => e.fullName).join(", ") || "—" },
-                { k: "FROM", v: managerName },
-                { k: "DATE", v: new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) },
-                ...(subject.trim() ? [{ k: "SUBJECT", v: subject }] : []),
-              ].map((r) => (
-                <View key={r.k} style={styles.previewRow}>
-                  <Text style={styles.previewK}>{r.k}</Text>
-                  <Text style={styles.previewColon}>:</Text>
-                  <Text style={styles.previewV}>{r.v}</Text>
-                </View>
-              ))}
+          <View style={styles.previewHeader}>
+            <View>
+              <Text style={styles.previewSectionTitle}>Print Preview</Text>
+              <Text style={styles.previewHint}>A4 · This is how the document will look when printed</Text>
             </View>
-            <View style={styles.previewDivider} />
-            <Text style={styles.previewBody}>{content || "(memo body will appear here)"}</Text>
-          </Card>
+            <Button label="Print / PDF" icon="printer-outline" variant="ghost" onPress={printMemo} />
+          </View>
+          <View style={styles.previewStage}>
+            <View style={styles.previewPaper}>
+              <Text style={styles.previewTitle}>MEMORANDUM</Text>
+              <View style={styles.previewMeta}>
+                {[
+                  { k: "TO", v: recipientNames.join(", ") || "—" },
+                  { k: "FROM", v: managerName },
+                  { k: "DATE", v: memoDate },
+                  ...(subject.trim() ? [{ k: "SUBJECT", v: subject }] : []),
+                ].map((r) => (
+                  <View key={r.k} style={styles.previewRow}>
+                    <Text style={styles.previewK}>{r.k}</Text>
+                    <Text style={styles.previewColon}>:</Text>
+                    <Text style={styles.previewV}>{r.v}</Text>
+                  </View>
+                ))}
+              </View>
+              <View style={styles.previewDivider} />
+              <Text style={styles.previewBody}>{content || "(memo body will appear here)"}</Text>
+              <View style={styles.signature}>
+                <View style={styles.signatureLine} />
+                <Text style={styles.signatureName}>{managerName}</Text>
+                <Text style={styles.signatureRole}>Authorized signatory</Text>
+              </View>
+            </View>
+          </View>
         </>
       ) : null}
 
@@ -295,15 +373,38 @@ const styles = StyleSheet.create({
   suggestReason: { fontSize: 12, color: Colors.textMuted, marginTop: 1 },
 
   // Live memo preview — a document-style rendering of the composed memo.
-  previewCard: { backgroundColor: "#fff" },
-  previewTitle: { fontSize: 16, fontWeight: "800", letterSpacing: 2, textAlign: "center", color: Colors.textPrimary, marginBottom: 14 },
-  previewMeta: { gap: 3 },
+  previewHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 8, marginBottom: 12 },
+  previewSectionTitle: { fontSize: 15, fontWeight: "800", color: Colors.textPrimary },
+  previewHint: { fontSize: 11.5, fontWeight: "500", color: Colors.textMuted, marginTop: 2 },
+  previewStage: { backgroundColor: "#E8E9E5", borderRadius: 16, padding: 20, marginBottom: 22, alignItems: "center" },
+  previewPaper: {
+    width: "100%",
+    maxWidth: 794,
+    aspectRatio: 210 / 297,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#D9D9D6",
+    paddingHorizontal: "9%",
+    paddingTop: "9%",
+    paddingBottom: "8%",
+    shadowColor: "#1F2937",
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.13,
+    shadowRadius: 20,
+    elevation: 3,
+  },
+  previewTitle: { fontSize: 18, fontWeight: "800", letterSpacing: 3, textAlign: "center", color: "#171717", marginBottom: 42 },
+  previewMeta: { gap: 6 },
   previewRow: { flexDirection: "row", alignItems: "flex-start" },
-  previewK: { width: 68, fontSize: 12, fontWeight: "800", color: Colors.textSubtle, letterSpacing: 0.4 },
-  previewColon: { width: 10, fontSize: 12, fontWeight: "800", color: Colors.textSubtle },
-  previewV: { flex: 1, fontSize: 13, fontWeight: "600", color: Colors.textPrimary },
-  previewDivider: { height: 1, backgroundColor: Colors.hairline, marginVertical: 14 },
-  previewBody: { fontSize: 13, lineHeight: 20, color: Colors.textPrimary, fontFamily: "monospace" },
+  previewK: { width: 84, fontSize: 12, fontWeight: "800", color: "#333333", letterSpacing: 0.5 },
+  previewColon: { width: 14, fontSize: 12, fontWeight: "800", color: "#333333" },
+  previewV: { flex: 1, fontSize: 13, fontWeight: "600", color: "#171717" },
+  previewDivider: { height: 1, backgroundColor: "#B9B9B9", marginVertical: 28 },
+  previewBody: { fontSize: 14, lineHeight: 23, color: "#171717", fontFamily: "serif" },
+  signature: { width: 230, marginTop: 70 },
+  signatureLine: { height: 1, backgroundColor: "#333333", marginBottom: 7 },
+  signatureName: { fontSize: 12, fontWeight: "700", color: "#171717", textAlign: "center" },
+  signatureRole: { fontSize: 10.5, color: "#555555", textAlign: "center", marginTop: 2 },
   actions: { flexDirection: "row", justifyContent: "flex-end", gap: 10, marginTop: 4 },
 
   memoHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },

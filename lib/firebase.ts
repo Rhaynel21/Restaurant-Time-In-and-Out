@@ -6,19 +6,31 @@ import { getFunctions } from "firebase/functions";
 import { getStorage } from "firebase/storage";
 import { Platform } from "react-native";
 
-// Firebase web config. The apiKey here is NOT a secret — access to your data is
-// controlled by Firestore security rules + Firebase Auth, not by hiding this key.
+// Firebase web config, loaded from EXPO_PUBLIC_ env vars (see .env / .env.example).
+// These values are NOT secrets — EXPO_PUBLIC_ vars are bundled into the client, and
+// access to your data is controlled by Firestore security rules + Firebase Auth, not
+// by hiding this config. They live in .env only for config hygiene and easy dev/prod
+// swaps. Real secrets belong in functions/.env, never behind EXPO_PUBLIC_.
 // Analytics (getAnalytics) is intentionally omitted: it is a web-only API and
 // is not supported in React Native / Expo.
 const firebaseConfig = {
-  apiKey: "AIzaSyD-cISjvsFXBmtdOAan1o4EMNp456F9F2c",
-  authDomain: "kitchen-in-and-out.firebaseapp.com",
-  projectId: "kitchen-in-and-out",
-  storageBucket: "kitchen-in-and-out.firebasestorage.app",
-  messagingSenderId: "644399021106",
-  appId: "1:644399021106:web:8f8f00a34d7eef7a17d02b",
-  measurementId: "G-V313Y3EK51",
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
+
+// Fail loudly at startup if the env wasn't loaded (e.g. missing .env after a fresh
+// clone), instead of surfacing a cryptic Firebase "invalid-api-key" error later.
+if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+  throw new Error(
+    "Missing Firebase config. Copy .env.example to .env and fill in the " +
+      "EXPO_PUBLIC_FIREBASE_* values, then restart the Expo dev server.",
+  );
+}
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 

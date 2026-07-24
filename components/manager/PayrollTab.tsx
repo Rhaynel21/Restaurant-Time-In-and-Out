@@ -11,7 +11,6 @@ import { EmployeeMaster, isPayrollExcluded, subscribeEmployeeMasters } from "@/l
 import { AttendanceRequest, subscribeAllRequests } from "@/lib/attendance-requests";
 import { LeaveRequest, subscribeAllLeaves } from "@/lib/leaves";
 import { loanBalanceAfter, loanDeductionForMonth } from "@/lib/loans";
-import { saveLaborCost } from "@/lib/labor-cost";
 import { inScope } from "@/lib/org";
 import { PayrollRun, approveRun, releaseRun, reopenRun, subscribePayrollRun } from "@/lib/payroll-run";
 import { savePayrollFormula, subscribePayrollFormula } from "@/lib/payroll-settings";
@@ -110,9 +109,10 @@ export function PayrollTab({ allowed, companyId, managerName }: { allowed: Set<s
     try {
       if (action === "approve") await approveRun(companyId, month, period.key, managerName);
       else if (action === "release") {
-        await releaseRun(companyId, month, period.key, managerName);
-        // Feed the Owner Insight (Step 8): persist this run's labor cost for the month.
-        await saveLaborCost(companyId, month, { grossPayroll: totals.gross, employerContributions: totals.employer });
+        await releaseRun(companyId, month, period.key, managerName, {
+          grossPayroll: totals.gross,
+          employerContributions: totals.employer,
+        });
       } else await reopenRun(companyId, month, period.key);
     } catch (e) {
       setError("Run update failed: " + (e instanceof Error ? e.message : "unknown error"));

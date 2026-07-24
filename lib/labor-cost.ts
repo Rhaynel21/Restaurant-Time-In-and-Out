@@ -27,11 +27,22 @@ function num(v: unknown): number {
 
 function fromDoc(id: string, data: Record<string, unknown>): LaborCost {
   const sep = id.indexOf("_");
+  const cutoffTotals = data.cutoffTotals && typeof data.cutoffTotals === "object"
+    ? Object.values(data.cutoffTotals as Record<string, unknown>)
+    : [];
+  const cutoffGross = cutoffTotals.reduce<number>((sum, value) => {
+    const row = value && typeof value === "object" ? value as Record<string, unknown> : {};
+    return sum + num(row.grossPayroll);
+  }, 0);
+  const cutoffEmployer = cutoffTotals.reduce<number>((sum, value) => {
+    const row = value && typeof value === "object" ? value as Record<string, unknown> : {};
+    return sum + num(row.employerContributions);
+  }, 0);
   return {
     companyId: typeof data.companyId === "string" ? data.companyId : id.slice(0, sep),
     month: typeof data.month === "string" ? data.month : id.slice(sep + 1),
-    grossPayroll: num(data.grossPayroll),
-    employerContributions: num(data.employerContributions),
+    grossPayroll: cutoffTotals.length ? cutoffGross : num(data.grossPayroll),
+    employerContributions: cutoffTotals.length ? cutoffEmployer : num(data.employerContributions),
     manualRevenue: typeof data.manualRevenue === "number" ? data.manualRevenue : null,
   };
 }

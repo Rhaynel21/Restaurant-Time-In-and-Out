@@ -1,4 +1,4 @@
-import { collection, doc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
+import { collection, doc, onSnapshot, serverTimestamp, setDoc, writeBatch } from "firebase/firestore";
 
 import { db } from "@/lib/firebase";
 
@@ -63,8 +63,54 @@ async function writeStatus(companyId: string | null, period: string, periodKey: 
 export async function approveRun(companyId: string | null, period: string, periodKey: string, approvedBy: string) {
   await writeStatus(companyId, period, periodKey, { status: "approved", approvedBy, approvedAt: serverTimestamp() });
 }
-export async function releaseRun(companyId: string | null, period: string, periodKey: string, releasedBy: string) {
-  await writeStatus(companyId, period, periodKey, { status: "released", releasedBy, releasedAt: serverTimestamp() });
+export async function releaseRun(
+  companyId: string | null,
+  period: string,
+  periodKey: string,
+  releasedBy: string,
+  totals: { grossPayroll: number; employerContributions: number },
+) {
+  const tenant = companyId ?? "";
+  const cutoff = periodKey || "full";
+  const timestamp = serverTimestamp();
+  const batch = writeBatch(db);
+
+  // Release status and its dashboard labor-cost snapshot must succeed together.
+  // This prevents a released payroll from leaving Owner Insight empty when the
+  // second write fails or the screen is closed between two separate requests.
+  batch.set(
+    doc(db, COLL, payrollRunId(tenant, period, cutoff)),
+    {
+      companyId: tenant,
+      period,
+      periodKey: cutoff,
+      status: "released",
+      releasedBy,
+      releasedAt: timestamp,
+      grossPayroll: totals.grossPayroll,
+      employerContributions: totals.employerContributions,
+      updatedAt: timestamp,
+    },
+    { merge: true },
+  );
+  batch.set(
+    doc(db, "labor_cost", `${tenant || "_"}_${period}`),
+    {
+      companyId: tenant,
+      month: period,
+      // Keep each cutoff independently so releasing cutoff 2 does not erase
+      // cutoff 1. The dashboard sums this map for the monthly ratio.
+      cutoffTotals: {
+        [cutoff]: {
+          grossPayroll: totals.grossPayroll,
+          employerContributions: totals.employerContributions,
+        },
+      },
+      updatedAt: timestamp,
+    },
+    { merge: true },
+  );
+  await batch.commit();
 }
 export async function reopenRun(companyId: string | null, period: string, periodKey: string) {
   await writeStatus(companyId, period, periodKey, { status: "draft", approvedBy: null, releasedBy: null });

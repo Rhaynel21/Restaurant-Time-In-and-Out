@@ -106,6 +106,14 @@ export default function ManagerPortal() {
   const [openSel, setOpenSel] = useState<null | "company" | "brand" | "branch">(null);
   // Collapse the wide sidebar to an icon-only rail.
   const [collapsed, setCollapsed] = useState(false);
+  // Keep-alive tabs: once a tab is opened it stays mounted (just hidden) so its
+  // in-progress work — computed payroll, generated reports, selections — survives
+  // navigating away and back instead of being torn down on every tab switch.
+  const [visited, setVisited] = useState<Set<TabKey>>(() => new Set<TabKey>(["dashboard"]));
+
+  useEffect(() => {
+    setVisited((prev) => (prev.has(tab) ? prev : new Set(prev).add(tab)));
+  }, [tab]);
 
   useEffect(() => subscribePendingLeaves((l) => setPendingCount(l.length), () => setPendingCount(0)), []);
   useEffect(
@@ -174,26 +182,68 @@ export default function ManagerPortal() {
   const activeGroup = NAV_GROUPS.find((g) => g.keys.includes(tab))?.label || "Overview";
   const scopeFiltered = !!brandFilter || !!branchFilter;
 
+  const renderTab = (key: TabKey): React.ReactNode => {
+    switch (key) {
+      case "dashboard":
+        return (
+          <DashboardTab
+            managerName={employee.fullName}
+            pendingCount={pendingCount}
+            alarmCount={tabsForRole(employee.accessRole).has("devices") ? alarmCount : 0}
+            allowed={allowed}
+            companyId={activeCompanyId}
+            onNavigate={(target) => {
+              if (tabsForRole(employee.accessRole).has(target)) setTab(target);
+            }}
+          />
+        );
+      case "approvals":
+        return <ApprovalsTab reviewerName={employee.fullName} />;
+      case "attendance":
+        return <AttendanceTab allowed={allowed} />;
+      case "schedules":
+        return <SchedulesTab managerName={employee.fullName} allowed={allowed} />;
+      case "employees":
+        return <EmployeesTab managerName={employee.fullName} scope={scope} />;
+      case "memo":
+        return <MemoTab managerName={employee.fullName} allowed={allowed} />;
+      case "org":
+        return <OrgTab />;
+      case "payroll":
+        return <PayrollTab allowed={allowed} companyId={activeCompanyId} managerName={employee.fullName} />;
+      case "finalpay":
+        return <FinalPayTab allowed={allowed} companyId={activeCompanyId} />;
+      case "reports":
+        return <ReportsTab allowed={allowed} companyId={activeCompanyId} />;
+      case "documents":
+        return <DocumentsTab managerName={employee.fullName} allowed={allowed} />;
+      case "dtr":
+        return <DtrTab allowed={allowed} actorName={employee.fullName} />;
+      case "devices":
+        return <DevicesTab />;
+      case "audit":
+        return <AuditTab />;
+      case "leaves":
+        return <LeavesTab allowed={allowed} />;
+      case "requests":
+        return <RequestsTab reviewerName={employee.fullName} allowed={allowed} />;
+      default:
+        return null;
+    }
+  };
+
+  // Render every tab that has been opened; hide the inactive ones with
+  // display:none so their component state (and thus any in-progress work) is
+  // preserved across navigation instead of unmounting.
+  const renderKeys = new Set<TabKey>(visited);
+  renderKeys.add(tab);
   const content = (
     <>
-      {tab === "dashboard" && (
-        <DashboardTab managerName={employee.fullName} pendingCount={pendingCount} alarmCount={alarmCount} allowed={allowed} companyId={activeCompanyId} />
-      )}
-      {tab === "approvals" && <ApprovalsTab reviewerName={employee.fullName} />}
-      {tab === "attendance" && <AttendanceTab allowed={allowed} />}
-      {tab === "schedules" && <SchedulesTab managerName={employee.fullName} allowed={allowed} />}
-      {tab === "employees" && <EmployeesTab managerName={employee.fullName} scope={scope} />}
-      {tab === "memo" && <MemoTab managerName={employee.fullName} allowed={allowed} />}
-      {tab === "org" && <OrgTab />}
-      {tab === "payroll" && <PayrollTab allowed={allowed} companyId={activeCompanyId} managerName={employee.fullName} />}
-      {tab === "finalpay" && <FinalPayTab allowed={allowed} companyId={activeCompanyId} />}
-      {tab === "reports" && <ReportsTab allowed={allowed} companyId={activeCompanyId} />}
-      {tab === "documents" && <DocumentsTab managerName={employee.fullName} allowed={allowed} />}
-      {tab === "dtr" && <DtrTab allowed={allowed} actorName={employee.fullName} />}
-      {tab === "devices" && <DevicesTab />}
-      {tab === "audit" && <AuditTab />}
-      {tab === "leaves" && <LeavesTab allowed={allowed} />}
-      {tab === "requests" && <RequestsTab reviewerName={employee.fullName} allowed={allowed} />}
+      {TABS.filter((t) => renderKeys.has(t.key)).map((t) => (
+        <View key={t.key} style={t.key === tab ? undefined : styles.tabHidden} pointerEvents={t.key === tab ? "auto" : "none"}>
+          {renderTab(t.key)}
+        </View>
+      ))}
     </>
   );
 
@@ -906,6 +956,8 @@ const styles = StyleSheet.create({
   notifEmptyText: { fontSize: 13, color: Colors.textFaint, fontWeight: "600" },
 
   container: { maxWidth: 1080, width: "100%", alignSelf: "center", paddingHorizontal: 36, paddingTop: 28, paddingBottom: 60 },
+  // A kept-alive but inactive tab: removed from layout, state retained.
+  tabHidden: (Platform.OS === "web" ? { display: "none" } : { height: 0, overflow: "hidden", opacity: 0 }) as ViewStyle,
 
   // Mobile
   mobileBar: {

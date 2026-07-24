@@ -136,6 +136,16 @@ function checkInDoc(emp, time) {
   };
 }
 
+// Human-readable, date-first IDs keep the Firestore list easy to scan while
+// employee + exact local time + source preserve uniqueness and idempotency.
+function attendanceDocumentId(employeeId, time, source = "bio") {
+  const pad = (value, length = 2) => String(value).padStart(length, "0");
+  const date = `${time.getFullYear()}-${pad(time.getMonth() + 1)}-${pad(time.getDate())}`;
+  const clock = `${pad(time.getHours())}${pad(time.getMinutes())}${pad(time.getSeconds())}${pad(time.getMilliseconds(), 3)}`;
+  const employee = String(employeeId || "employee").trim().replace(/[^a-zA-Z0-9_-]/g, "-");
+  return `${date}_${employee}_${clock}_${source}`;
+}
+
 // A punch that starts the meal break.
 function breakOutDoc(time) {
   return {
@@ -177,7 +187,7 @@ async function writeBreakIn(openRecord, time) {
 async function writeCheckIn(emp, time) {
   // Deterministic ID makes the write idempotent, so a queued replay can never
   // create a duplicate record.
-  const id = `${emp.employeeId}-${time.getTime()}-bio`;
+  const id = attendanceDocumentId(emp.employeeId, time);
   try {
     await db.collection("attendance").doc(id).set(checkInDoc(emp, time));
   } catch (err) {
@@ -225,7 +235,7 @@ async function writeCheckOut(openRecord, time) {
 async function replayOp(op) {
   if (op.kind === "checkin") {
     const time = new Date(op.timeMs);
-    const id = `${op.emp.employeeId}-${op.timeMs}-bio`;
+    const id = attendanceDocumentId(op.emp.employeeId, time);
     await db.collection("attendance").doc(id).set(checkInDoc(op.emp, time));
   } else if (op.kind === "checkout") {
     await db
@@ -387,7 +397,7 @@ async function midnightRollover(now = new Date()) {
     // Re-open only for genuine overnight shifts (evening check-in), and never
     // carry a continuation twice — so a forgotten punch stops after one day.
     if (ci.getHours() >= 18 && !r.autoOpened) {
-      const id = `${r.employeeId}-${nextStart.getTime()}-carry`;
+      const id = attendanceDocumentId(r.employeeId, nextStart, "carry");
       await db.collection("attendance").doc(id).set({
         employeeId: r.employeeId,
         employeeName: r.employeeName,
