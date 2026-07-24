@@ -247,22 +247,32 @@ async function processAttendanceAlerts(forceCompanyId?: string) {
       const priorAlert = await alertRef.get();
       const alreadySent = new Set<string>(priorAlert.exists && Array.isArray(priorAlert.get("successfulRecipients")) ? priorAlert.get("successfulRecipients") as string[] : []);
 
-      const [employeeSnap, attendanceSnap, branchSnap, companySnap] = await Promise.all([
-        db.collection("employees").where("companyId", "==", settings.companyId).get(),
+      // Qui employee docs are NOT stamped with companyId — they carry branchId, and
+      // the org owns branches. So read all employees and scope by branch membership.
+      const [employeeSnap, attendanceSnap, branchSnap, companySnap, leaveSnap, reqSnap, deviceSnap] = await Promise.all([
+        db.collection("employees").get(),
         db.collection("attendance").where("checkInAt", ">=", clock.startUtc).get(),
         db.collectionGroup("branches").get(),
         db.collection("organization").doc(settings.companyId).get(),
+        db.collection("leaves").where("status", "==", "pending").get(),
+        db.collection("attendanceRequests").where("status", "==", "pending").get(),
+        db.collection("deviceStatus").get(),
       ]);
       const companyName = companySnap.exists ? String(companySnap.get("name") || "HRIS") : "HRIS";
+      // Branches this org owns (new `organization/…` or legacy `companies/…` path).
       const branchNames = new Map<string, string>();
       branchSnap.docs
-        .filter((d) => d.ref.path.startsWith(`organization/${settings.companyId}/`))
+        .filter((d) => d.ref.path.startsWith(`organization/${settings.companyId}/`) || d.ref.path.startsWith(`companies/${settings.companyId}/`))
         .forEach((d) => branchNames.set(d.id, String(d.get("name") || d.id)));
+      // If the org tree has branches, scope to them; otherwise fall back to whatever
+      // branches the employees themselves reference (single-org / pre-migrate data).
+      const scopeToOrgBranches = branchNames.size > 0;
       const activeByBranch = new Map<string, number>();
       employeeSnap.docs.forEach((d) => {
         if (d.get("status") === "inactive") return;
         const branchId = d.get("branchId");
         if (typeof branchId !== "string" || !branchId) return;
+        if (scopeToOrgBranches && !branchNames.has(branchId)) return;
         activeByBranch.set(branchId, (activeByBranch.get(branchId) || 0) + 1);
         if (!branchNames.has(branchId)) branchNames.set(branchId, String(d.get("branchName") || branchId));
       });
@@ -275,14 +285,45 @@ async function processAttendanceAlerts(forceCompanyId?: string) {
         ids.add(employeeId);
         presentByBranch.set(branchId, ids);
       });
-      const abnormal = [...activeByBranch.entries()]
+      const allBranches = [...activeByBranch.entries()]
         .map(([branchId, active]) => ({ branchId, name: branchNames.get(branchId) || branchId, active, present: presentByBranch.get(branchId)?.size || 0 }))
-        .filter((row) => row.present < settings.minPresentPerBranch);
-      if (abnormal.length === 0) continue;
+        .sort((a, b) => a.present - b.present);
+      const abnormal = allBranches.filter((row) => row.present < settings.minPresentPerBranch);
+
+      // ── Extra report sections (this org's scope) ──
+      const inOrg = (branchId: unknown) => !scopeToOrgBranches || (typeof branchId === "string" && (branchId === "" || branchNames.has(branchId)));
+      const pendingLeaves = leaveSnap.docs.filter((d) => inOrg(d.get("branchId"))).length;
+      const pendingReqs = reqSnap.docs.filter((d) => inOrg(d.get("branchId"))).length;
+      const offlineDevices = deviceSnap.docs.filter((d) => {
+        const last = d.get("lastSeenAt");
+        const lastMs = last && typeof last.toMillis === "function" ? last.toMillis() : null;
+        return d.get("online") !== true || lastMs === null || Date.now() - lastMs > 120000;
+      }).length;
+      const totalPresent = allBranches.reduce((sum, row) => sum + row.present, 0);
+
+      // Scheduled runs report only when there's something actionable (attendance
+      // dip, pending approvals, or an offline scanner); manual "Send now" always sends.
+      const hasNews = abnormal.length > 0 || pendingLeaves > 0 || pendingReqs > 0 || offlineDevices > 0;
+      if (!forceCompanyId && !hasNews) continue;
       abnormalBranches += abnormal.length;
-      const totalPresent = abnormal.reduce((sum, row) => sum + row.present, 0);
-      const details = abnormal.map((row) => `${row.name}: ${row.present}/${row.active} present`).join("; ");
-      const message = `${companyName} attendance alert ${clock.date}: only ${totalPresent} present across ${abnormal.length} low-attendance branch${abnormal.length === 1 ? "" : "es"}. ${details}. Please verify absences or delayed punches.`;
+
+      // ── Build the multi-section daily digest ──
+      const sections: string[] = [];
+      if (abnormal.length > 0) {
+        const details = abnormal.map((row) => `${row.name} ${row.present}/${row.active}`).join(", ");
+        sections.push(`Attendance: ${totalPresent} present, ${abnormal.length} low branch${abnormal.length === 1 ? "" : "es"} (${details})`);
+      } else if (allBranches.length > 0) {
+        sections.push(`Attendance: OK, ${totalPresent} present across ${allBranches.length} branch${allBranches.length === 1 ? "" : "es"}`);
+      } else {
+        sections.push("Attendance: no active branches to evaluate");
+      }
+      if (pendingLeaves > 0 || pendingReqs > 0) {
+        sections.push(`Approvals pending: ${pendingLeaves} leave, ${pendingReqs} DTR/OT`);
+      }
+      if (offlineDevices > 0) {
+        sections.push(`Devices: ${offlineDevices} scanner${offlineDevices === 1 ? "" : "s"} offline`);
+      }
+      const message = `${companyName} daily report ${clock.date}. ${sections.join(". ")}.`;
       const results: { to: string; ok: boolean; error?: string }[] = [];
       const pendingRecipients = settings.recipientPhones.filter((phone) => !alreadySent.has(phone));
       if (pendingRecipients.length === 0) continue;
@@ -294,7 +335,7 @@ async function processAttendanceAlerts(forceCompanyId?: string) {
       sent += results.filter((r) => r.ok).length;
       await alertRef.set({ companyId: settings.companyId, date: clock.date, message, branches: abnormal, results, successfulRecipients: [...alreadySent], updatedAt: new Date() }, { merge: true });
 
-      const managers = priorAlert.exists ? [] : employeeSnap.docs.filter((d) => ["owner", "admin", "hr", "manager", "areaManager"].includes(String(d.get("accessRole"))));
+      const managers = priorAlert.exists || abnormal.length === 0 ? [] : employeeSnap.docs.filter((d) => ["owner", "admin", "hr", "manager", "areaManager"].includes(String(d.get("accessRole"))));
       const batch = db.batch();
       managers.forEach((manager) => batch.create(db.collection("notifications").doc(), {
         toEmployeeId: manager.id, title: "Attendance abnormality", body: message, kind: "warning", read: false, createdAt: new Date(),
@@ -318,12 +359,17 @@ export const sendAttendanceAlertNow = onCall(
     if (!request.auth) throw new HttpsError("unauthenticated", "Sign in before sending an alert.");
     const companyId = typeof request.data?.companyId === "string" ? request.data.companyId.trim() : "";
     if (!companyId) throw new HttpsError("invalid-argument", "Select an organization first.");
-    const role = String(request.auth.token.role || "");
+    // Qui stores roles on the Firestore `employees` doc (resolved by email at login),
+    // NOT as Auth custom claims — so authorize the caller by looking up their record.
+    const email = String(request.auth.token.email || "").toLowerCase();
+    const empSnap = email ? await db.collection("employees").where("email", "==", email).limit(1).get() : null;
+    const emp = empSnap && !empSnap.empty ? empSnap.docs[0].data() : null;
+    const role = String(emp?.accessRole || "");
     if (!["owner", "admin", "hr", "manager", "areaManager"].includes(role)) {
       throw new HttpsError("permission-denied", "Your role cannot send attendance alerts.");
     }
-    const claimCompany = typeof request.auth.token.companyId === "string" ? request.auth.token.companyId : "";
-    if (role !== "owner" && claimCompany && claimCompany !== companyId) {
+    const empCompany = typeof emp?.companyId === "string" ? emp.companyId : "";
+    if (role !== "owner" && empCompany && empCompany !== companyId) {
       throw new HttpsError("permission-denied", "You cannot send alerts for another organization.");
     }
     const settings = await db.collection("attendance_alert_settings").doc(companyId).get();
@@ -334,3 +380,242 @@ export const sendAttendanceAlertNow = onCall(
     return { ok: true, ...result };
   },
 );
+
+// Read-only device health check. GET with Authorization: Bearer <BIOMETRIC_API_KEY>.
+// Reports each biometric device's last heartbeat so the Hikvision bridge's
+// online/offline state can be verified server-side (a device is "live" if it
+// reported within 2 minutes).
+export const deviceHealth = onRequest({ secrets: [BIOMETRIC_API_KEY], invoker: "public" }, async (req, res) => {
+  if ((req.get("Authorization") || "") !== `Bearer ${BIOMETRIC_API_KEY.value()}`) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
+  }
+  // Maintenance: ?delete=<deviceId> removes one stale/decommissioned device doc.
+  const del = typeof req.query.delete === "string" ? req.query.delete : "";
+  if (del) {
+    await db.collection("deviceStatus").doc(del).delete();
+    res.json({ ok: true, deleted: del });
+    return;
+  }
+  // Maintenance: ?setgeo=1 stamps approximate Metro Manila coordinates + a 300 m
+  // geofence radius onto every branch doc (both org trees) so GPS check-in can
+  // enforce a fence. Coordinates are approximate — refine per branch in the Org tab.
+  if (req.query.setgeo) {
+    const GEO: Record<string, { lat: number; lng: number; radius: number }> = {
+      "kio-qc": { lat: 14.63093, lng: 121.03371, radius: 300 },
+      "kio-makati": { lat: 14.55686, lng: 121.01975, radius: 300 },
+      "kio-bgc": { lat: 14.55122, lng: 121.04673, radius: 300 },
+      "qui-manila": { lat: 14.63, lng: 121.043, radius: 300 },
+    };
+    const bsnap = await db.collectionGroup("branches").get();
+    const updated: string[] = [];
+    for (const d of bsnap.docs) {
+      const g = GEO[d.id];
+      if (!g) continue;
+      await d.ref.set({ latitude: g.lat, longitude: g.lng, radiusMeters: g.radius }, { merge: true });
+      updated.push(d.ref.path);
+    }
+    res.json({ ok: true, updated });
+    return;
+  }
+  // Maintenance: ?consolidate=1 merges the legacy `companies/` org tree into the
+  // canonical `organization/` tree (copying any missing branch first, e.g. Qui
+  // Manila), then deletes the duplicate `companies/` tree. Employee branchIds are
+  // referenced by id, not path, so they keep resolving after the merge.
+  if (req.query.consolidate) {
+    const bsnap = await db.collectionGroup("branches").get();
+    const orgBranchIds = new Set(bsnap.docs.filter((d) => d.ref.path.startsWith("organization/")).map((d) => d.id));
+    const copied: string[] = [];
+    const deleted: string[] = [];
+    // 1) Copy company-only branches into the organization tree (preserve coords).
+    for (const d of bsnap.docs) {
+      if (!d.ref.path.startsWith("companies/")) continue;
+      const p = d.ref.path.split("/"); // companies,{co},brands,{br},branches,{id}
+      if (!orgBranchIds.has(d.id)) {
+        await db.doc(`organization/${p[1]}/brands/${p[3]}/branches/${d.id}`).set(d.data(), { merge: true });
+        copied.push(d.id);
+      }
+    }
+    // 2) Delete the legacy companies tree (branches, brands, areas, company docs).
+    const [brandSnap, areaSnap, coSnap] = await Promise.all([
+      db.collectionGroup("brands").get(),
+      db.collectionGroup("areas").get(),
+      db.collection("companies").get(),
+    ]);
+    for (const d of bsnap.docs) if (d.ref.path.startsWith("companies/")) { await d.ref.delete(); deleted.push(d.ref.path); }
+    for (const d of brandSnap.docs) if (d.ref.path.startsWith("companies/")) { await d.ref.delete(); deleted.push(d.ref.path); }
+    for (const d of areaSnap.docs) if (d.ref.path.startsWith("companies/")) { await d.ref.delete(); deleted.push(d.ref.path); }
+    for (const d of coSnap.docs) { await d.ref.delete(); deleted.push(d.ref.path); }
+    res.json({ ok: true, copied, deleted });
+    return;
+  }
+  // Seed: ?seedpos=1 writes ~45 days of realistic per-branch POS revenue into
+  // pos_daily (Fri/Sat peaks, weekday base) + a labor_cost record for this month
+  // sized to ~20% of revenue, so the Dashboard Owner Insight (Labor Cost Ratio)
+  // shows a believable within-benchmark figure.
+  if (req.query.seedpos) {
+    const esnap = await db.collection("employees").get();
+    const branchName = new Map<string, string>();
+    esnap.docs.forEach((d) => {
+      const b = d.get("branchId");
+      if (typeof b === "string" && b) branchName.set(b, String(d.get("branchName") || b));
+    });
+    const branches = [...branchName.keys()];
+    const nowPH = new Date(Date.now() + 8 * 3_600_000);
+    const month = `${nowPH.getUTCFullYear()}-${String(nowPH.getUTCMonth() + 1).padStart(2, "0")}`;
+    let monthNet = 0;
+    let rows = 0;
+    const batch = db.batch();
+    for (const bId of branches) {
+      for (let i = 0; i < 45; i += 1) {
+        const d = new Date(nowPH.getTime() - i * 86_400_000);
+        const ymd = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+        const dow = d.getUTCDay();
+        const base = dow === 5 || dow === 6 ? 98000 : dow === 0 ? 86000 : 61000; // Fri/Sat peak, Sun mid, weekday base
+        const jitter = Math.round((Math.random() - 0.5) * 16000);
+        const net = Math.max(22000, base + jitter);
+        const gross = Math.round(net * 1.13); // + VAT / pre-discount
+        const sc = Math.round(net * 0.1); // 10% service charge pool
+        batch.set(
+          db.collection("pos_daily").doc(`${bId}_${ymd}`),
+          { branchId: bId, date: ymd, grossSales: gross, netSales: net, serviceChargePool: sc, source: "manual", updatedAt: new Date() },
+          { merge: true },
+        );
+        rows += 1;
+        if (ymd.slice(0, 7) === month) monthNet += net;
+      }
+    }
+    await batch.commit();
+    const grossPayroll = Math.round(monthNet * 0.18);
+    const employer = Math.round(monthNet * 0.02);
+    await db.collection("labor_cost").doc(`qui_${month}`).set(
+      { companyId: "qui", month, grossPayroll, employerContributions: employer, updatedAt: new Date() },
+      { merge: true },
+    );
+    res.json({ ok: true, branches: branches.length, posRows: rows, month, monthlyRevenue: monthNet, laborCost: grossPayroll + employer, ratioPct: Math.round(((grossPayroll + employer) / monthNet) * 1000) / 10 });
+    return;
+  }
+  // Fix: ?enablealerts=1 flips enabled=true on every attendance_alert_settings doc
+  // so the scheduled digest actually fires (the cron only processes enabled ones).
+  if (req.query.enablealerts) {
+    const snap = await db.collection("attendance_alert_settings").get();
+    const on: string[] = [];
+    for (const d of snap.docs) {
+      await d.ref.set({ enabled: true, updatedAt: new Date() }, { merge: true });
+      on.push(d.id);
+    }
+    res.json({ ok: true, enabled: on });
+    return;
+  }
+  // Diagnostics: ?alertcfg=1 dumps attendance_alert_settings so an "auto SMS didn't
+  // fire" report can be checked (enabled? checkHour? recipients?).
+  if (req.query.alertcfg) {
+    const snap = await db.collection("attendance_alert_settings").get();
+    const nowHourPH = new Date(Date.now() + 8 * 3_600_000).getUTCHours();
+    res.json({
+      nowHourPH,
+      settings: snap.docs.map((d) => ({
+        id: d.id,
+        enabled: d.get("enabled") === true,
+        checkHour: d.get("checkHour") ?? null,
+        recipients: Array.isArray(d.get("recipientPhones")) ? d.get("recipientPhones").length : 0,
+        minPresentPerBranch: d.get("minPresentPerBranch") ?? null,
+      })),
+    });
+    return;
+  }
+  // Seed/fix: ?fixformula=1 writes the pay-computation formula onto organization/qui
+  // with semi-monthly cutoffs but contributions SPLIT 50/50 across both cutoffs, so
+  // SSS/PhilHealth/Pag-IBIG/withholding show on every payroll register (not just the
+  // 2nd cutoff).
+  if (req.query.fixformula) {
+    const formula = {
+      hoursPerDay: 8,
+      otPremium: 0.25,
+      nightDiff: 0.1,
+      regHolidayPremium: 1.0,
+      specialHolidayPremium: 0.3,
+      payFrequency: "semimonthly",
+      cutoffDay: 15,
+      contributionOn: "split",
+      deMinimisCap: 0,
+    };
+    await db.collection("organization").doc("qui").set({ payrollFormula: formula, payrollFormulaUpdatedAt: new Date() }, { merge: true });
+    res.json({ ok: true, formula });
+    return;
+  }
+  // Maintenance: ?cleanjunk=1 removes employee docs whose email isn't @qui.local
+  // (test/signup leftovers), plus any with no email — the canonical roster all use
+  // @qui.local. Attendance/schedules keyed to those ids are removed too.
+  if (req.query.cleanjunk) {
+    // Canonical roster ids (seed-accounts.js). Anything else is a test/signup leftover.
+    const VALID = new Set([
+      "ADMIN-001", "HR-001", "AREA-001", "MGR-001", "MGR-002", "MGR-003", "MGR-004",
+      "EMP-1001", "EMP-1002", "EMP-1003", "EMP-1004", "EMP-1005", "EMP-1006", "EMP-1007",
+      "EMP-1008", "EMP-1009", "EMP-1010", "EMP-1011", "EMP-1012", "EMP-1013",
+    ]);
+    const esnap = await db.collection("employees").get();
+    const removed: string[] = [];
+    for (const d of esnap.docs) {
+      const email = String(d.get("email") || "").toLowerCase();
+      if (VALID.has(d.id)) continue;
+      // Delete the employee's attendance + schedule, then the employee doc.
+      const att = await db.collection("attendance").where("employeeId", "==", d.id).get();
+      const batch = db.batch();
+      att.docs.forEach((a) => batch.delete(a.ref));
+      batch.delete(db.collection("schedules").doc(d.id));
+      batch.delete(d.ref);
+      await batch.commit();
+      removed.push(`${d.id} (${email || "no email"})`);
+    }
+    res.json({ ok: true, removed });
+    return;
+  }
+  // Diagnostics: ?branches=1 dumps org branches + employee branch assignments so
+  // a branchId ↔ org-branch mismatch (why geofencing fails) can be pinpointed.
+  if (req.query.branches) {
+    const [bsnap, esnap] = await Promise.all([db.collectionGroup("branches").get(), db.collection("employees").get()]);
+    const branches = bsnap.docs.map((d) => ({
+      id: d.id,
+      path: d.ref.path,
+      name: d.get("name") || null,
+      lat: d.get("latitude") ?? null,
+      lng: d.get("longitude") ?? null,
+      radius: d.get("radiusMeters") ?? null,
+    }));
+    const employees = esnap.docs.map((d) => ({ id: d.id, name: d.get("fullName") || `${d.get("firstName") || ""} ${d.get("lastName") || ""}`.trim(), email: d.get("email") ?? null, branchId: d.get("branchId") ?? null, branchName: d.get("branchName") ?? null }));
+    res.json({ branchCount: branches.length, branches, employees });
+    return;
+  }
+  const snap = await db.collection("deviceStatus").get();
+  const now = Date.now();
+  const devices = snap.docs.map((d) => {
+    const x = d.data();
+    const lastMs = x.lastSeenAt && typeof x.lastSeenAt.toMillis === "function" ? x.lastSeenAt.toMillis() : null;
+    const ageSec = lastMs ? Math.round((now - lastMs) / 1000) : null;
+    return {
+      id: d.id,
+      name: x.deviceName || d.id,
+      onlineFlag: x.online === true,
+      lastSeenAgeSec: ageSec,
+      live: x.online === true && lastMs !== null && now - lastMs <= 120000,
+      queueDepth: typeof x.queueDepth === "number" ? x.queueDepth : 0,
+      lastError: typeof x.lastError === "string" ? x.lastError : null,
+    };
+  });
+  // Latest punches, to confirm scans are flowing in real time.
+  const attSnap = await db.collection("attendance").orderBy("checkInAt", "desc").limit(3).get();
+  const recentPunches = attSnap.docs.map((d) => {
+    const x = d.data();
+    const inMs = x.checkInAt && typeof x.checkInAt.toMillis === "function" ? x.checkInAt.toMillis() : null;
+    const outMs = x.checkOutAt && typeof x.checkOutAt.toMillis === "function" ? x.checkOutAt.toMillis() : null;
+    return {
+      employee: x.employeeName || x.employeeId || "?",
+      branch: x.branchName || x.branchId || "?",
+      method: x.method || "biometric",
+      checkInAgeSec: inMs ? Math.round((now - inMs) / 1000) : null,
+      checkedOut: outMs !== null,
+    };
+  });
+  res.json({ now: new Date(now).toISOString(), count: devices.length, anyLive: devices.some((d) => d.live), devices, recentPunches });
+});

@@ -3,16 +3,37 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { BarChart, BarDatum } from "@/components/manager/BarChart";
-import { Badge, Button, Card, EmptyState, SectionTitle, StatTile, StatTone } from "@/components/manager/ui";
+import { Badge, Button, Card, EmptyState, InlineMessage, SectionTitle, StatTile, StatTone } from "@/components/manager/ui";
 import { WorkforceTab } from "@/components/manager/WorkforceTab";
 import { ManagerColors as Colors } from "@/constants/theme";
 import { AttendanceRecord, getAttendanceSince, subscribeAllTodayAttendance } from "@/lib/attendance";
 import { AttendanceAlertSettings, defaultAttendanceAlertSettings, saveAttendanceAlertSettings, sendAttendanceAlertNow, subscribeAttendanceAlertSettings } from "@/lib/attendance-alerts";
+import { subscribeAllRequests } from "@/lib/attendance-requests";
 import { EmployeeMaster, subscribeEmployeeMasters } from "@/lib/hr";
 import { LaborCost, laborCostRatioPct, laborCostTotal, ratioVerdict, setManualRevenue, subscribeLaborCost } from "@/lib/labor-cost";
+import { subscribeAllLeaves } from "@/lib/leaves";
 import { inScope } from "@/lib/org";
 import { PosDaily, subscribePosDaily, sumPos } from "@/lib/pos";
-import { Schedule, effectiveShift, emptySchedule, getAllSchedules } from "@/lib/schedules";
+import { Schedule, effectiveShift, emptySchedule, getAllSchedules, shiftBlocks } from "@/lib/schedules";
+
+// Minutes worked on a record, overnight-aware, capped at 16h (forgotten time-out).
+function workedMins(r: AttendanceRecord): number {
+  if (!r.checkOutAt) return 0;
+  let m = Math.round((r.checkOutAt.getTime() - r.checkInAt.getTime()) / 60000);
+  if (m < 0) m += 24 * 60;
+  return Math.min(Math.max(0, m), 16 * 60);
+}
+// Is a punch late vs the employee's scheduled start for that day (15-min grace)?
+function lateVsSchedule(sched: Schedule, checkIn: Date): boolean {
+  const ymd = `${checkIn.getFullYear()}-${String(checkIn.getMonth() + 1).padStart(2, "0")}-${String(checkIn.getDate()).padStart(2, "0")}`;
+  const shift = effectiveShift(sched, ymd);
+  if (shift.off) return false;
+  const blocks = shiftBlocks(shift);
+  if (!blocks.length) return false;
+  const [sh, sm] = blocks[0].start.split(":").map(Number);
+  if (!Number.isFinite(sh) || !Number.isFinite(sm)) return false;
+  return checkIn.getHours() * 60 + checkIn.getMinutes() > sh * 60 + sm + 15;
+}
 
 function currentMonthValue() {
   const d = new Date();
@@ -80,16 +101,19 @@ export function DashboardTab({
   alarmCount,
   allowed,
   companyId,
+  onNavigate,
 }: {
   managerName: string;
   pendingCount: number;
   alarmCount: number;
   allowed: Set<string> | null;
   companyId: string | null;
+  onNavigate?: (target: "approvals" | "requests" | "devices" | "attendance") => void;
 }) {
   const [allRows, setAllRows] = useState<AttendanceRecord[]>([]);
   useEffect(() => subscribeAllTodayAttendance(setAllRows, () => setAllRows([])), []);
   const rows = useMemo(() => allRows.filter((r) => inScope(r.branchId, allowed)), [allRows, allowed]);
+  const [selectedMetric, setSelectedMetric] = useState<string | null>(null);
 
   // Last 7 days of punches, fetched once for the trend chart.
   const [week, setWeek] = useState<AttendanceRecord[]>([]);
@@ -105,6 +129,23 @@ export function DashboardTab({
   // employees with no saved schedule fall back to the default Mon–Sat week.
   const [roster, setRoster] = useState<EmployeeMaster[]>([]);
   useEffect(() => subscribeEmployeeMasters(setRoster, () => setRoster([])), []);
+  // Pending OT/DTR-correction + leave requests, in scope, for the action center.
+  const [reqPending, setReqPending] = useState(0);
+  const [leavePendingLive, setLeavePendingLive] = useState(0);
+  useEffect(
+    () => subscribeAllRequests(
+      (rs) => setReqPending(rs.filter((r) => r.status === "pending" && inScope(r.branchId, allowed)).length),
+      () => setReqPending(0),
+    ),
+    [allowed],
+  );
+  useEffect(
+    () => subscribeAllLeaves(
+      (ls) => setLeavePendingLive(ls.filter((l) => l.status === "pending" && inScope(l.branchId, allowed)).length),
+      () => setLeavePendingLive(0),
+    ),
+    [allowed],
+  );
   const [schedules, setSchedules] = useState<Map<string, Schedule>>(new Map());
   useEffect(() => {
     getAllSchedules().then(setSchedules).catch(() => setSchedules(new Map()));
@@ -192,9 +233,9 @@ export function DashboardTab({
     try {
       await saveAttendanceAlertSettings(alertSettings, managerName);
       const result = await sendAttendanceAlertNow(alertCompanyId);
-      setAlertMessage(result.abnormalBranches === 0
-        ? "No low-attendance branches found. No SMS was sent."
-        : `Sent ${result.sent} SMS alert${result.sent === 1 ? "" : "s"} covering ${result.abnormalBranches} branch${result.abnormalBranches === 1 ? "" : "es"}.`);
+      setAlertMessage(result.sent > 0
+        ? `Sent ${result.sent} SMS${result.sent === 1 ? "" : "s"}${result.abnormalBranches > 0 ? ` · ${result.abnormalBranches} low-attendance branch${result.abnormalBranches === 1 ? "" : "es"}` : " · status report (all branches OK)"}.`
+        : "No SMS sent — add a recipient (or all were already notified today).");
     } catch (e) {
       const message = e instanceof Error ? e.message : "unknown error";
       setAlertMessage(message.toLowerCase().includes("internal")
@@ -235,18 +276,19 @@ export function DashboardTab({
 
   // Absent today: active, in-scope employees scheduled to work today (effective
   // shift not a rest day) who have not punched in.
-  const absent = useMemo(() => {
+  const absentEmployees = useMemo(() => {
     const now = new Date();
     const ymd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     const present = new Set(rows.map((r) => r.employeeId));
-    let n = 0;
+    const employees: EmployeeMaster[] = [];
     for (const e of roster) {
       if (e.status !== "active" || !inScope(e.branchId, allowed)) continue;
       const sched = schedules.get(e.employeeId) ?? emptySchedule(e.employeeId);
-      if (!effectiveShift(sched, ymd).off && !present.has(e.employeeId)) n += 1;
+      if (!effectiveShift(sched, ymd).off && !present.has(e.employeeId)) employees.push(e);
     }
-    return n;
+    return employees.sort((a, b) => a.fullName.localeCompare(b.fullName));
   }, [roster, schedules, rows, allowed]);
+  const absent = absentEmployees.length;
 
   // ── Step 8: Owner Insight — Labor Cost Ratio (this month) ──
   const insightMonth = currentMonthValue();
@@ -280,6 +322,26 @@ export function DashboardTab({
   const ratioPct = laborTotal > 0 && revenue ? laborCostRatioPct(laborTotal, revenue) : null;
   const verdict = ratioPct != null ? ratioVerdict(ratioPct) : null;
 
+  // Top performers — most hours logged over the last 7 days (from real punches,
+  // overnight-aware), days present as the tiebreaker.
+  const topPerformers = useMemo(() => {
+    const byEmp = new Map<string, { name: string; branch: string; minutes: number; days: Set<string> }>();
+    for (const r of week) {
+      if (!inScope(r.branchId, allowed) || !r.checkOutAt) continue;
+      let mins = Math.round((r.checkOutAt.getTime() - r.checkInAt.getTime()) / 60000);
+      if (mins < 0) mins += 24 * 60; // overnight
+      mins = Math.min(Math.max(0, mins), 16 * 60);
+      const cur = byEmp.get(r.employeeId) ?? { name: r.employeeName, branch: r.branchName, minutes: 0, days: new Set<string>() };
+      cur.minutes += mins;
+      cur.days.add(`${r.checkInAt.getFullYear()}-${r.checkInAt.getMonth()}-${r.checkInAt.getDate()}`);
+      byEmp.set(r.employeeId, cur);
+    }
+    return [...byEmp.values()]
+      .map((e) => ({ name: e.name, branch: e.branch, minutes: e.minutes, days: e.days.size }))
+      .sort((a, b) => b.minutes - a.minutes || b.days - a.days)
+      .slice(0, 3);
+  }, [week, allowed]);
+
   // Distinct headcount per branch, today — a live breakdown the roster-based
   // Workforce Analytics section below does not show.
   const byBranch = useMemo(() => {
@@ -293,6 +355,57 @@ export function DashboardTab({
       .map(([label, set]) => ({ label, value: set.size }))
       .sort((a, b) => b.value - a.value);
   }, [rows]);
+
+  // ── This Week: totals across the last 7 days of punches ──
+  const weekStats = useMemo(() => {
+    const inWeek = week.filter((r) => inScope(r.branchId, allowed));
+    let minutes = 0;
+    let shifts = 0;
+    let lates = 0;
+    const emps = new Set<string>();
+    for (const r of inWeek) {
+      emps.add(r.employeeId);
+      minutes += workedMins(r);
+      if (r.checkOutAt) shifts += 1;
+      if (lateVsSchedule(schedules.get(r.employeeId) ?? emptySchedule(r.employeeId), r.checkInAt)) lates += 1;
+    }
+    return { hours: minutes / 60, shifts, lates, employees: emps.size };
+  }, [week, allowed, schedules]);
+
+  // ── Branch comparison: present today + week hours + this month's revenue ──
+  const branchStats = useMemo(() => {
+    const names = new Map<string, string>();
+    const present = new Map<string, Set<string>>();
+    rows.forEach((r) => {
+      const k = r.branchId || r.branchName;
+      names.set(k, r.branchName || k);
+      if (!present.has(k)) present.set(k, new Set());
+      present.get(k)!.add(r.employeeId);
+    });
+    const hours = new Map<string, number>();
+    week.filter((r) => inScope(r.branchId, allowed)).forEach((r) => {
+      const k = r.branchId || r.branchName;
+      names.set(k, r.branchName || names.get(k) || k);
+      hours.set(k, (hours.get(k) || 0) + workedMins(r));
+    });
+    const revenue = new Map<string, number>();
+    posRows.forEach((p) => revenue.set(p.branchId, (revenue.get(p.branchId) || 0) + p.netSales));
+    return [...new Set([...names.keys(), ...revenue.keys()])]
+      .map((k) => ({ key: k, name: names.get(k) || k, present: present.get(k)?.size || 0, hours: (hours.get(k) || 0) / 60, revenue: revenue.get(k) || 0 }))
+      .sort((a, b) => b.revenue - a.revenue || b.present - a.present);
+  }, [rows, week, posRows, allowed]);
+
+  // ── Needs Attention: actionable counts, worst first ──
+  const attention = useMemo(
+    () =>
+      [
+        { key: "leaves", target: "approvals" as const, label: "Leave approvals", sub: "awaiting review", count: leavePendingLive || pendingCount, icon: "checkbox-marked-circle-outline" as MdIcon },
+        { key: "requests", target: "requests" as const, label: "OT / DTR corrections", sub: "awaiting review", count: reqPending, icon: "clock-edit-outline" as MdIcon },
+        { key: "alarms", target: "devices" as const, label: "Device alarms", sub: "unacknowledged", count: alarmCount, icon: "shield-alert-outline" as MdIcon },
+        { key: "absent", target: "attendance" as const, label: "Absent today", sub: "scheduled, no time-in", count: absent, icon: "account-alert-outline" as MdIcon },
+      ].filter((a) => a.count > 0),
+    [leavePendingLive, pendingCount, reqPending, alarmCount, absent],
+  );
 
   // Time-ins bucketed by hour (6am–9pm), from today's punches.
   const hourData: BarDatum[] = useMemo(() => {
@@ -346,17 +459,55 @@ export function DashboardTab({
     year: "numeric",
   });
 
-  const stats: { label: string; value: string; sub: string; icon: MdIcon; tone: StatTone }[] = [
-    { label: "On shift now", value: String(onShift), sub: `${insight.onShiftPct}% of today's ins`, icon: "account-clock", tone: "in" },
-    { label: "On break", value: String(onBreak), sub: "on meal break", icon: "silverware-fork-knife", tone: "pending" },
-    { label: "Completed shifts", value: String(done), sub: `${insight.completion}% of today's time-ins`, icon: "logout-variant", tone: "out" },
-    { label: "Absent today", value: String(absent), sub: "scheduled, no time-in", icon: "account-alert-outline", tone: "critical" },
-    { label: "Hours logged", value: insight.hoursLogged.toFixed(1), sub: `across ${insight.shiftsCounted} finished shift${insight.shiftsCounted === 1 ? "" : "s"}`, icon: "timer-outline", tone: "neutral" },
-    { label: "Active branches", value: String(insight.activeBranches), sub: "reporting today", icon: "storefront-outline", tone: "in" },
-    { label: "Avg time-in", value: fmtMinOfDay(insight.avgIn), sub: "average clock-in", icon: "clock-fast", tone: "neutral" },
-    { label: "Pending approvals", value: String(pendingCount), sub: "awaiting review", icon: "clipboard-text-clock-outline", tone: "pending" },
-    { label: "Open alarms", value: String(alarmCount), sub: "device alerts", icon: "shield-alert-outline", tone: "critical" },
+  const stats: { key: string; label: string; value: string; sub: string; icon: MdIcon; tone: StatTone; hasDetails?: boolean }[] = [
+    { key: "shift", label: "On shift now", value: String(onShift), sub: `${insight.onShiftPct}% of today's ins`, icon: "account-clock", tone: "in", hasDetails: true },
+    { key: "break", label: "On break", value: String(onBreak), sub: "on meal break", icon: "silverware-fork-knife", tone: "pending", hasDetails: true },
+    { key: "done", label: "Completed shifts", value: String(done), sub: `${insight.completion}% of today's time-ins`, icon: "logout-variant", tone: "out", hasDetails: true },
+    { key: "absent", label: "Absent today", value: String(absent), sub: "scheduled, no time-in", icon: "account-alert-outline", tone: "critical", hasDetails: true },
+    { key: "hours", label: "Hours logged", value: insight.hoursLogged.toFixed(1), sub: `across ${insight.shiftsCounted} finished shift${insight.shiftsCounted === 1 ? "" : "s"}`, icon: "timer-outline", tone: "neutral", hasDetails: true },
+    { key: "branches", label: "Active branches", value: String(insight.activeBranches), sub: "reporting today", icon: "storefront-outline", tone: "in", hasDetails: true },
+    { key: "average", label: "Avg time-in", value: fmtMinOfDay(insight.avgIn), sub: "average clock-in", icon: "clock-fast", tone: "neutral" },
+    { key: "approvals", label: "Pending approvals", value: String(pendingCount), sub: "awaiting review", icon: "clipboard-text-clock-outline", tone: "pending" },
+    { key: "alarms", label: "Open alarms", value: String(alarmCount), sub: "device alerts", icon: "shield-alert-outline", tone: "critical" },
   ];
+
+  type MetricDetail = { id: string; name: string; meta: string; value?: string };
+  const metricDetails = useMemo<Record<string, MetricDetail[]>>(() => {
+    const isOnBreak = (r: AttendanceRecord) => !r.checkOutAt && !!r.breakOutAt && !r.breakInAt;
+    return {
+      shift: rows
+        .filter((r) => !r.checkOutAt && !isOnBreak(r))
+        .map((r) => ({ id: r.id, name: r.employeeName, meta: r.branchName || "Unassigned branch", value: `In ${fmtTime(r.checkInAt)}` })),
+      break: rows
+        .filter(isOnBreak)
+        .map((r) => ({ id: r.id, name: r.employeeName, meta: r.branchName || "Unassigned branch", value: `Since ${fmtTime(r.breakOutAt)}` })),
+      done: rows
+        .filter((r) => !!r.checkOutAt)
+        .map((r) => ({ id: r.id, name: r.employeeName, meta: r.branchName || "Unassigned branch", value: `Out ${fmtTime(r.checkOutAt)}` })),
+      absent: absentEmployees.map((e) => ({
+        id: e.employeeId,
+        name: e.fullName,
+        meta: [e.branchName || "Unassigned branch", e.position].filter(Boolean).join(" · "),
+      })),
+      hours: rows
+        .filter((r) => !!r.checkOutAt)
+        .map((r) => ({
+          id: r.id,
+          name: r.employeeName,
+          meta: r.branchName || "Unassigned branch",
+          value: `${(workedMins(r) / 60).toFixed(1)} h`,
+        }))
+        .sort((a, b) => parseFloat(b.value) - parseFloat(a.value)),
+      branches: byBranch.map((b) => ({
+        id: b.label,
+        name: b.label,
+        meta: `${b.value} employee${b.value === 1 ? "" : "s"} reporting today`,
+      })),
+    };
+  }, [rows, absentEmployees, byBranch]);
+
+  const selectedStat = stats.find((s) => s.key === selectedMetric);
+  const selectedDetails = selectedMetric ? metricDetails[selectedMetric] ?? [] : [];
 
   const branchMax = Math.max(1, ...byBranch.map((b) => b.value));
 
@@ -372,11 +523,109 @@ export function DashboardTab({
         </View>
       </View>
 
+      {attention.length > 0 && (
+        <View style={styles.attentionCard}>
+          <View style={styles.attentionHead}>
+            <MaterialCommunityIcons name="alert-decagram-outline" size={18} color={Colors.warningDeep} />
+            <Text style={styles.attentionTitle}>Needs Attention</Text>
+          </View>
+          <View style={styles.attentionRow}>
+            {attention.map((a) => (
+              <Pressable
+                key={a.key}
+                onPress={() => onNavigate?.(a.target)}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${a.label}`}
+                style={({ pressed }) => [styles.attentionItem, pressed && styles.attentionItemPressed]}
+              >
+                <View style={styles.attentionIconWrap}>
+                  <MaterialCommunityIcons name={a.icon} size={17} color={Colors.warningDeep} />
+                </View>
+                <View style={styles.grow}>
+                  <Text style={styles.attentionCount}>{a.count}</Text>
+                  <Text style={styles.attentionLabel} numberOfLines={1}>{a.label}</Text>
+                  <Text style={styles.attentionSub} numberOfLines={1}>{a.sub}</Text>
+                </View>
+                <MaterialCommunityIcons name="chevron-right" size={18} color={Colors.textFaint} />
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      )}
+
       <View style={styles.grid}>
         {stats.map((s) => (
-          <StatTile key={s.label} label={s.label} value={s.value} sub={s.sub} icon={s.icon} tone={s.tone} />
+          <StatTile
+            key={s.key}
+            label={s.label}
+            value={s.value}
+            sub={s.sub}
+            icon={s.icon}
+            tone={s.tone}
+            selected={selectedMetric === s.key}
+            onPress={s.hasDetails ? () => setSelectedMetric((current) => current === s.key ? null : s.key) : undefined}
+          />
         ))}
       </View>
+
+      {selectedStat && (
+        <View style={styles.metricDetailCard}>
+          <View style={styles.metricDetailHead}>
+            <View style={styles.grow}>
+              <Text style={styles.metricDetailTitle}>{selectedStat.label}</Text>
+              <Text style={styles.metricDetailSub}>
+                {selectedDetails.length === 0
+                  ? "No employees to display"
+                  : `${selectedDetails.length} ${selectedMetric === "branches" ? "active branch" : "employee"}${selectedDetails.length === 1 ? "" : "s"}`}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => setSelectedMetric(null)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Close metric details"
+              style={styles.metricDetailClose}
+            >
+              <MaterialCommunityIcons name="close" size={18} color={Colors.textMuted} />
+            </Pressable>
+          </View>
+          {selectedDetails.length === 0 ? (
+            <View style={styles.metricDetailEmpty}>
+              <MaterialCommunityIcons name="account-check-outline" size={24} color={Colors.textFaint} />
+              <Text style={styles.metricDetailEmptyText}>Nothing to show for this status today.</Text>
+            </View>
+          ) : (
+            <View style={styles.metricDetailList}>
+              {selectedDetails.map((item) => (
+                <View key={item.id} style={styles.metricDetailRow}>
+                  <View style={styles.metricAvatar}>
+                    <Text style={styles.metricAvatarText}>{initials(item.name)}</Text>
+                  </View>
+                  <View style={styles.grow}>
+                    <Text style={styles.metricDetailName} numberOfLines={1}>{item.name}</Text>
+                    <Text style={styles.metricDetailMeta} numberOfLines={1}>{item.meta}</Text>
+                  </View>
+                  {item.value ? <Text style={styles.metricDetailValue}>{item.value}</Text> : null}
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      )}
+
+      <Card style={styles.weekCard}>
+        <View style={styles.weekHead}>
+          <MaterialCommunityIcons name="calendar-week" size={16} color={Colors.primary} />
+          <Text style={styles.weekTitle}>This Week</Text>
+          <Text style={styles.weekSub}>last 7 days</Text>
+        </View>
+        <View style={styles.weekStatsRow}>
+          <WeekStat value={weekStats.hours % 1 === 0 ? String(weekStats.hours) : weekStats.hours.toFixed(1)} unit="h" label="Hours logged" />
+          <WeekStat value={String(weekStats.shifts)} label="Shifts done" />
+          <WeekStat value={String(weekStats.employees)} label="Active staff" />
+          <WeekStat value={String(weekStats.lates)} label="Late arrivals" warn={weekStats.lates > 0} />
+        </View>
+      </Card>
 
       {!companyId ? (
         <Card style={styles.alertCard}>
@@ -388,8 +637,8 @@ export function DashboardTab({
         <View style={styles.alertHead}>
           <MaterialCommunityIcons name="message-alert-outline" size={20} color={Colors.primary} />
           <View style={styles.grow}>
-            <Text style={styles.alertTitle}>Attendance abnormality SMS</Text>
-            <Text style={styles.alertSub}>Semaphore sends one daily alert listing every branch below the minimum present headcount.</Text>
+            <Text style={styles.alertTitle}>Daily operations SMS</Text>
+            <Text style={styles.alertSub}>Semaphore sends a daily digest: attendance vs the minimum present headcount, pending approvals (leave + DTR/OT), and any offline scanner.</Text>
           </View>
           <Pressable
             style={[styles.alertToggle, alertSettings.enabled && styles.alertToggleOn]}
@@ -457,7 +706,20 @@ export function DashboardTab({
             </View>
           ))}
         </View>
-        {alertMessage ? <Text style={styles.alertMessage}>{alertMessage}</Text> : null}
+        {alertMessage ? (
+          <View style={{ marginTop: 10 }}>
+            <InlineMessage
+              text={alertMessage}
+              tone={
+                /fail|unavailable|blocked|before|first|at least|select|enter a valid|no sms/i.test(alertMessage)
+                  ? "error"
+                  : /sent|saved|✓/i.test(alertMessage)
+                    ? "success"
+                    : "info"
+              }
+            />
+          </View>
+        ) : null}
       </Card>
       )}
 
@@ -495,7 +757,9 @@ export function DashboardTab({
             </View>
           </View>
         ) : laborTotal <= 0 ? (
-          <Text style={styles.insightEmpty}>Release this month&apos;s payroll to capture labor cost, then the ratio appears here.</Text>
+          <Text style={styles.insightEmpty}>
+            No payroll has been released for this month. In Payroll: compute the run, lock its DTR, approve, then release it.
+          </Text>
         ) : (
           <View style={styles.insightBody}>
             <Text style={styles.insightEmpty}>
@@ -517,6 +781,54 @@ export function DashboardTab({
           </View>
         )}
       </Card>
+
+      {topPerformers.length > 0 && (
+        <Card style={styles.perfCard}>
+          <View style={styles.perfHead}>
+            <MaterialCommunityIcons name="trophy-outline" size={18} color={Colors.primary} />
+            <Text style={styles.perfTitle}>Top Performers</Text>
+            <Text style={styles.perfPeriod}>most hours · last 7 days</Text>
+          </View>
+          {topPerformers.map((p, i) => (
+            <View key={p.name + i} style={[styles.perfRow, i > 0 && styles.perfRowBorder]}>
+              <View style={[styles.perfRank, i === 0 ? styles.rankGold : i === 1 ? styles.rankSilver : styles.rankBronze]}>
+                <Text style={[styles.perfRankText, i === 0 && styles.rankTextDark]}>{i + 1}</Text>
+              </View>
+              <View style={styles.perfMain}>
+                <Text style={styles.perfName} numberOfLines={1}>{p.name}</Text>
+                <Text style={styles.perfSub} numberOfLines={1}>
+                  {p.branch}{p.branch ? " · " : ""}{p.days} day{p.days === 1 ? "" : "s"} present
+                </Text>
+              </View>
+              <Text style={styles.perfHours}>{Math.floor(p.minutes / 60)}h {p.minutes % 60}m</Text>
+            </View>
+          ))}
+        </Card>
+      )}
+
+      {branchStats.length > 0 && (
+        <Card style={styles.branchCmpCard}>
+          <View style={styles.branchCmpHead}>
+            <MaterialCommunityIcons name="store-outline" size={16} color={Colors.primary} />
+            <Text style={styles.branchCmpTitle}>Branch Comparison</Text>
+            <Text style={styles.branchCmpSub}>present · 7-day hrs · month revenue</Text>
+          </View>
+          <View style={[styles.branchCmpRow, styles.branchCmpHeadRow]}>
+            <Text style={[styles.branchCmpCell, styles.bcName, styles.branchCmpTh]}>Branch</Text>
+            <Text style={[styles.branchCmpCell, styles.bcNum, styles.branchCmpTh]}>Present</Text>
+            <Text style={[styles.branchCmpCell, styles.bcNum, styles.branchCmpTh]}>7-day hrs</Text>
+            <Text style={[styles.branchCmpCell, styles.bcMoney, styles.branchCmpTh]}>Revenue</Text>
+          </View>
+          {branchStats.map((b, i) => (
+            <View key={b.key} style={[styles.branchCmpRow, i < branchStats.length - 1 && styles.branchCmpBorder]}>
+              <Text style={[styles.branchCmpCell, styles.bcName]} numberOfLines={1}>{b.name}</Text>
+              <Text style={[styles.branchCmpCell, styles.bcNum, b.present === 0 && styles.bcZero]}>{b.present}</Text>
+              <Text style={[styles.branchCmpCell, styles.bcNum]}>{b.hours % 1 === 0 ? b.hours : b.hours.toFixed(1)}</Text>
+              <Text style={[styles.branchCmpCell, styles.bcMoney]}>{b.revenue > 0 ? peso(b.revenue) : "—"}</Text>
+            </View>
+          ))}
+        </Card>
+      )}
 
       <View style={styles.chartRow}>
         <View style={styles.chartCard}>
@@ -622,7 +934,58 @@ const cardShadow = {
   elevation: 1,
 } as const;
 
+function WeekStat({ value, unit, label, warn }: { value: string; unit?: string; label: string; warn?: boolean }) {
+  return (
+    <View style={styles.weekStat}>
+      <Text style={[styles.weekStatValue, warn && styles.weekStatWarn]}>
+        {value}
+        {unit ? <Text style={styles.weekStatUnit}> {unit}</Text> : null}
+      </Text>
+      <Text style={styles.weekStatLabel} numberOfLines={1}>{label}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  // Needs Attention
+  attentionCard: { backgroundColor: "#FCF3E6", borderWidth: 1, borderColor: "rgba(154,123,63,0.35)", borderRadius: 16, padding: 16, marginBottom: 18 },
+  attentionHead: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 },
+  attentionTitle: { fontSize: 14, fontWeight: "800", color: Colors.textPrimary },
+  attentionRow: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  attentionItem: { flexDirection: "row", alignItems: "center", gap: 10, flexGrow: 1, flexBasis: 200, backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "rgba(0,0,0,0.05)", paddingHorizontal: 12, paddingVertical: 10 },
+  attentionItemPressed: { opacity: 0.78, borderColor: Colors.warningBorder },
+  attentionIconWrap: { width: 34, height: 34, borderRadius: 10, backgroundColor: "#FCF3E6", alignItems: "center", justifyContent: "center" },
+  attentionCount: { fontSize: 19, fontWeight: "800", color: Colors.warningDeep, letterSpacing: -0.3, fontVariant: ["tabular-nums"] },
+  attentionLabel: { fontSize: 13, fontWeight: "700", color: Colors.textPrimary, marginTop: -1 },
+  attentionSub: { fontSize: 11, color: Colors.textFaint, marginTop: 1 },
+
+  // This Week
+  weekCard: { marginBottom: 18 },
+  weekHead: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 },
+  weekTitle: { flex: 1, fontSize: 14, fontWeight: "800", color: Colors.textPrimary },
+  weekSub: { fontSize: 11, fontWeight: "700", color: Colors.textFaint, textTransform: "uppercase", letterSpacing: 0.4 },
+  weekStatsRow: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  weekStat: { flexGrow: 1, flexBasis: 110, minWidth: 96, backgroundColor: Colors.warmSurface, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
+  weekStatValue: { fontSize: 22, fontWeight: "800", color: Colors.textPrimary, letterSpacing: -0.5, fontVariant: ["tabular-nums"] },
+  weekStatWarn: { color: Colors.warningDeep },
+  weekStatUnit: { fontSize: 13, fontWeight: "700", color: Colors.textFaint },
+  weekStatLabel: { fontSize: 11, color: Colors.textFaint, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.4, marginTop: 3 },
+
+  // Branch comparison
+  branchCmpCard: { marginBottom: 18 },
+  branchCmpHead: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 },
+  branchCmpTitle: { flex: 1, fontSize: 14, fontWeight: "800", color: Colors.textPrimary },
+  branchCmpSub: { fontSize: 11, fontWeight: "700", color: Colors.textFaint, textTransform: "uppercase", letterSpacing: 0.4 },
+  branchCmpRow: { flexDirection: "row", alignItems: "center", paddingVertical: 10, gap: 8 },
+  branchCmpHeadRow: { paddingVertical: 6 },
+  branchCmpBorder: { borderBottomWidth: 1, borderBottomColor: Colors.hairline },
+  branchCmpTh: { fontSize: 11, fontWeight: "800", color: Colors.textSubtle, textTransform: "uppercase", letterSpacing: 0.4 },
+  branchCmpCell: { fontSize: 13.5, color: Colors.textPrimary, fontVariant: ["tabular-nums"] },
+  bcName: { flex: 1, minWidth: 0, fontWeight: "700" },
+  bcNum: { width: 72, textAlign: "right" },
+  bcMoney: { width: 110, textAlign: "right", fontWeight: "700" },
+  bcZero: { color: Colors.danger, fontWeight: "800" },
+
   header: {
     flexDirection: "row",
     alignItems: "stretch",
@@ -647,6 +1010,24 @@ const styles = StyleSheet.create({
   analyticsSub: { fontSize: 13, fontWeight: "500", color: Colors.textFaint, marginTop: 3 },
 
   insightCard: { marginBottom: 18 },
+
+  // Top performers
+  perfCard: { marginBottom: 18 },
+  perfHead: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 },
+  perfTitle: { flex: 1, fontSize: 14, fontWeight: "800", color: Colors.textPrimary },
+  perfPeriod: { fontSize: 11, fontWeight: "700", color: Colors.textFaint, textTransform: "uppercase", letterSpacing: 0.4 },
+  perfRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10 },
+  perfRowBorder: { borderTopWidth: 1, borderTopColor: Colors.hairline },
+  perfRank: { width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: Colors.warmSurface },
+  rankGold: { backgroundColor: "#F4C542" },
+  rankSilver: { backgroundColor: "#D7D7DB" },
+  rankBronze: { backgroundColor: "#E0A87A" },
+  perfRankText: { fontSize: 13, fontWeight: "800", color: "#fff" },
+  rankTextDark: { color: "#5A4A12" },
+  perfMain: { flex: 1, minWidth: 0 },
+  perfName: { fontSize: 14, fontWeight: "700", color: Colors.textPrimary },
+  perfSub: { fontSize: 12, color: Colors.textFaint, marginTop: 1 },
+  perfHours: { fontSize: 14, fontWeight: "800", color: Colors.primary, fontVariant: ["tabular-nums"] },
   insightHead: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 14 },
   insightTitle: { flex: 1, fontSize: 14, fontWeight: "800", color: Colors.textPrimary },
   insightMonth: { fontSize: 12, fontWeight: "800", color: Colors.textFaint, fontVariant: ["tabular-nums"] },
@@ -677,6 +1058,51 @@ const styles = StyleSheet.create({
   revBtnText: { color: "#fff", fontWeight: "800", fontSize: 14 },
 
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginBottom: 22 },
+  metricDetailCard: {
+    backgroundColor: Colors.cardSurface,
+    borderWidth: 1,
+    borderColor: Colors.primaryTintStrong,
+    borderRadius: 16,
+    padding: 16,
+    marginTop: -10,
+    marginBottom: 22,
+    ...cardShadow,
+  },
+  metricDetailHead: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 12 },
+  metricDetailTitle: { fontSize: 15, fontWeight: "800", color: Colors.textPrimary },
+  metricDetailSub: { fontSize: 12, fontWeight: "600", color: Colors.textMuted, marginTop: 2 },
+  metricDetailClose: {
+    width: 32,
+    height: 32,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Colors.warmSurface,
+  },
+  metricDetailList: { borderTopWidth: 1, borderTopColor: Colors.hairline },
+  metricDetailRow: {
+    minHeight: 58,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+    paddingVertical: 9,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.hairline,
+  },
+  metricAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Colors.primaryTint,
+  },
+  metricAvatarText: { fontSize: 11, fontWeight: "800", color: Colors.primaryDeep },
+  metricDetailName: { fontSize: 13.5, fontWeight: "700", color: Colors.textPrimary },
+  metricDetailMeta: { fontSize: 11.5, fontWeight: "500", color: Colors.textMuted, marginTop: 2 },
+  metricDetailValue: { fontSize: 12, fontWeight: "700", color: Colors.textMuted, fontVariant: ["tabular-nums"] },
+  metricDetailEmpty: { alignItems: "center", justifyContent: "center", gap: 7, paddingVertical: 22, borderTopWidth: 1, borderTopColor: Colors.hairline },
+  metricDetailEmptyText: { fontSize: 12.5, fontWeight: "600", color: Colors.textMuted },
 
   alertCard: { marginBottom: 18 },
   alertHead: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 },

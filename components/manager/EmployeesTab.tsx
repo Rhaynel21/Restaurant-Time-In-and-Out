@@ -59,6 +59,19 @@ const COLUMNS: { key: ColKey; label: string; width: number; text: (e: EmployeeMa
   { key: "tin", label: "TIN", width: 150, text: (e) => e.tin },
 ];
 const DEFAULT_VISIBLE: ColKey[] = ["firstName", "lastName", "email", "position", "branch", "status"];
+
+// Common reasons an employee's record is set to inactive (Philippine HR context).
+const INACTIVE_REASONS = [
+  "Resigned",
+  "Terminated (for cause)",
+  "End of contract",
+  "AWOL / Abandonment",
+  "Retired",
+  "Redundancy / Retrenchment",
+  "Health / Medical",
+  "Deceased",
+  "Others",
+];
 const ROWS_OPTIONS = [10, 20, 50];
 
 export function EmployeesTab({ managerName, scope }: { managerName: string; scope: Scope }) {
@@ -225,11 +238,34 @@ export function EmployeesTab({ managerName, scope }: { managerName: string; scop
                 <SegmentedControl
                   options={[{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }]}
                   value={e.status}
-                  onChange={(v) => patch({ status: v })}
+                  onChange={(v) => patch({ status: v, ...(v === "active" ? { inactiveReason: "" } : null) })}
                 />
               </Field>
             </View>
           </View>
+
+          {e.status === "inactive" && (
+            <View style={styles.formGrid}>
+              <View style={styles.col}>
+                <Field label="Reason for inactive">
+                  <Select
+                    value={INACTIVE_REASONS.includes(e.inactiveReason) ? e.inactiveReason : ""}
+                    placeholder="Pick a reason…"
+                    options={INACTIVE_REASONS.map((r) => ({ value: r, label: r }))}
+                    onChange={(v) => patch({ inactiveReason: v })}
+                  />
+                </Field>
+              </View>
+              <View style={styles.col}>
+                <TextField
+                  label="Details (optional)"
+                  value={e.inactiveReason}
+                  onChangeText={(t) => patch({ inactiveReason: t })}
+                  placeholder="e.g. Resigned, effective 2026-07-31"
+                />
+              </View>
+            </View>
+          )}
 
           <View style={styles.formGrid}>
             <View style={styles.col}>
@@ -520,7 +556,14 @@ export function EmployeesTab({ managerName, scope }: { managerName: string; scop
   // ── Directory (full-width table) ──
   const renderCell = (e: EmployeeMaster, key: ColKey) => {
     if (key === "status")
-      return <Badge label={e.status === "active" ? "Active" : "Inactive"} tone={e.status === "active" ? "in" : "out"} />;
+      return (
+        <View style={{ gap: 3, alignItems: "flex-start" }}>
+          <Badge label={e.status === "active" ? "Active" : "Inactive"} tone={e.status === "active" ? "in" : "out"} />
+          {e.status === "inactive" && e.inactiveReason ? (
+            <Text style={{ fontSize: 11, color: Colors.textFaint }} numberOfLines={1}>{e.inactiveReason}</Text>
+          ) : null}
+        </View>
+      );
     const col = COLUMNS.find((c) => c.key === key)!;
     return (
       <Text style={styles.cellText} numberOfLines={1}>

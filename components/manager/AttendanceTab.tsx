@@ -34,6 +34,37 @@ type BranchGroup = {
 // still open many hours in, or a meal break that never ended.
 type Exception = { record: AttendanceRecord; reason: string };
 
+const summaryTones = {
+  in: { color: Colors.success, surface: Colors.successTint },
+  warning: { color: Colors.warningDeep, surface: Colors.warningSurface },
+  out: { color: Colors.textMuted, surface: Colors.warmSurfaceAlt },
+  critical: { color: Colors.danger, surface: Colors.dangerTint },
+  total: { color: Colors.primaryDeep, surface: Colors.primaryTint },
+} as const;
+
+function SummaryCard({
+  value,
+  label,
+  tone,
+}: {
+  value: number;
+  label: string;
+  tone: keyof typeof summaryTones;
+}) {
+  const palette = summaryTones[tone];
+  return (
+    <View style={styles.summaryCard}>
+      <View style={[styles.summaryIcon, { backgroundColor: palette.surface }]}>
+        <View style={[styles.summaryDot, { backgroundColor: palette.color }]} />
+      </View>
+      <View style={styles.summaryCopy}>
+        <Text style={[styles.summaryValue, { color: palette.color }]}>{value}</Text>
+        <Text style={styles.summaryLabel}>{label}</Text>
+      </View>
+    </View>
+  );
+}
+
 function detectException(r: AttendanceRecord, nowMs: number): Exception | null {
   const hoursSinceIn = (nowMs - r.checkInAt.getTime()) / 3_600_000;
   if (r.autoClosed) return { record: r, reason: "Missing time-out — auto-closed at midnight" };
@@ -108,11 +139,17 @@ export function AttendanceTab({ allowed }: { allowed: Set<string> | null }) {
     <View>
       {/* Portal-wide tallies across every in-scope branch. */}
       <View style={styles.summaryRow}>
-        <Badge label={`${totals.onShift} on shift`} tone="in" />
-        <Badge label={`${totals.onBreak} on break`} tone="warning" />
-        <Badge label={`${totals.done} timed out`} tone="out" />
-        {exceptions.length > 0 && <Badge label={`${exceptions.length} exception${exceptions.length === 1 ? "" : "s"}`} tone="critical" />}
-        <Text style={styles.summaryTotal}>{totals.rows} total today</Text>
+        <SummaryCard value={totals.onShift} label="On shift" tone="in" />
+        <SummaryCard value={totals.onBreak} label="On break" tone="warning" />
+        <SummaryCard value={totals.done} label="Timed out" tone="out" />
+        {exceptions.length > 0 && (
+          <SummaryCard
+            value={exceptions.length}
+            label={exceptions.length === 1 ? "Exception" : "Exceptions"}
+            tone="critical"
+          />
+        )}
+        <SummaryCard value={totals.rows} label="Total today" tone="total" />
       </View>
 
       {exceptions.length > 0 && (
@@ -154,8 +191,39 @@ export function AttendanceTab({ allowed }: { allowed: Set<string> | null }) {
 }
 
 const styles = StyleSheet.create({
-  summaryRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 20 },
-  summaryTotal: { fontSize: 13, fontWeight: "700", color: Colors.textMuted, marginLeft: 2 },
+  summaryRow: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    gap: 12,
+    flexWrap: "wrap",
+    marginBottom: 22,
+  },
+  summaryCard: {
+    flexGrow: 1,
+    flexBasis: 150,
+    minWidth: 150,
+    minHeight: 76,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: Colors.cardSurface,
+    borderWidth: 1,
+    borderColor: Colors.hairline,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  summaryIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  summaryDot: { width: 10, height: 10, borderRadius: 5 },
+  summaryCopy: { flex: 1, minWidth: 0 },
+  summaryValue: { fontSize: 20, lineHeight: 22, fontWeight: "800", fontVariant: ["tabular-nums"] },
+  summaryLabel: { fontSize: 12, lineHeight: 16, fontWeight: "600", color: Colors.textMuted, marginTop: 2 },
 
   exceptionCard: { backgroundColor: "#FCF3E6", borderWidth: 1, borderColor: Colors.warningDeep, borderRadius: 14, padding: 16, marginBottom: 22 },
   exceptionHead: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 },

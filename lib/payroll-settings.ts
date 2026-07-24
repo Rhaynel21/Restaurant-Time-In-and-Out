@@ -5,7 +5,7 @@ import { db } from "@/lib/firebase";
 import { DEFAULT_FORMULA, PayFormula } from "@/lib/ph-payroll";
 
 // Payroll pay-formula settings are stored PER COMPANY (multi-tenant) as a
-// `payrollFormula` map on the companies/{companyId} document — a path the app
+// `payrollFormula` map on the organization/{companyId} document — a path the app
 // already has read/write access to — so no extra Firestore rule is required.
 
 function coerce(data: unknown): PayFormula {
@@ -38,7 +38,7 @@ export function subscribePayrollFormula(
     return () => {};
   }
   return onSnapshot(
-    doc(db, "companies", companyId),
+    doc(db, "organization", companyId),
     (snap) => onChange(coerce(snap.exists() ? (snap.data() as Record<string, unknown>).payrollFormula : null)),
     (error) => onError?.(error as Error),
   );
@@ -46,7 +46,7 @@ export function subscribePayrollFormula(
 
 export async function savePayrollFormula(companyId: string, formula: PayFormula, actor = "System"): Promise<void> {
   await setDoc(
-    doc(db, "companies", companyId),
+    doc(db, "organization", companyId),
     { payrollFormula: formula, payrollFormulaUpdatedAt: serverTimestamp() },
     { merge: true },
   );

@@ -107,7 +107,9 @@ export default function Dashboard() {
   // once clocked out we always show the computed total (HH:MM), even if short.
   const totalHoursLabel = useMemo(() => {
     if (!checkInAt || !checkOutAt) return "--:--";
-    const diffMs = Math.max(0, checkOutAt.getTime() - checkInAt.getTime());
+    let diffMs = checkOutAt.getTime() - checkInAt.getTime();
+    if (diffMs < 0) diffMs += 24 * 3600000; // overnight shift crossed midnight
+    diffMs = Math.min(diffMs, 16 * 3600000); // cap a forgotten time-out
     const hours = Math.floor(diffMs / 3600000);
     const minutes = Math.floor((diffMs % 3600000) / 60000);
     return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
@@ -165,7 +167,9 @@ export default function Dashboard() {
   // Sync-health banner: buffered scans take priority (recovery in progress),
   // otherwise flag a stale/offline scanner. Silent when everything is healthy.
   const queuedScans = devices.reduce((sum, d) => sum + (d.queueDepth || 0), 0);
-  const scannerOffline = devices.length > 0 && devices.some((d) => !isDeviceOnline(d));
+  // Offline only when NO terminal is reporting — a single stale/decommissioned
+  // device shouldn't flag "offline" while another terminal is live.
+  const scannerOffline = devices.length > 0 && !devices.some((d) => isDeviceOnline(d));
   const syncBanner: { icon: React.ComponentProps<typeof MaterialCommunityIcons>["name"]; text: string } | null =
     queuedScans > 0
       ? {

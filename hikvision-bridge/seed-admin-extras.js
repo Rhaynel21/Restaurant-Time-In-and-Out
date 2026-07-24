@@ -117,8 +117,10 @@ async function cleanDummy() {
     });
   }
 
-  // ── Payroll formula on the company doc (Payroll tab shows a saved config) ─
-  await db.collection("companies").doc("qui").set(
+  // ── Payroll formula on the organization doc (Payroll tab reads it here) ──
+  // Semi-monthly cutoffs with contributions SPLIT 50/50 so SSS/PhilHealth/Pag-IBIG
+  // and withholding show on BOTH cutoffs (not only the 2nd).
+  await db.collection("organization").doc("qui").set(
     {
       payrollFormula: {
         hoursPerDay: 8,
@@ -128,7 +130,7 @@ async function cleanDummy() {
         specialHolidayPremium: 0.3,
         payFrequency: "semimonthly",
         cutoffDay: 15,
-        contributionOn: "second",
+        contributionOn: "split",
         deMinimisCap: 0,
       },
       payrollFormulaUpdatedAt: serverTimestamp(),

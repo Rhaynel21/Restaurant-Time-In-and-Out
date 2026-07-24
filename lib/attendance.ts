@@ -1,6 +1,5 @@
 import {
   Timestamp,
-  addDoc,
   collection,
   doc,
   getDocs,
@@ -8,6 +7,7 @@ import {
   onSnapshot,
   query,
   serverTimestamp,
+  setDoc,
   updateDoc,
   where,
 } from "firebase/firestore";
@@ -303,10 +303,19 @@ export async function clearLocalSession() {
 
 type PunchEmployee = Pick<EmployeeProfile, "employeeId" | "fullName" | "branchId" | "branchName">;
 
+export function attendanceDocumentId(employeeId: string, at: Date, method: "gps" | "bio") {
+  const pad = (value: number, length = 2) => String(value).padStart(length, "0");
+  const date = `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
+  const time = `${pad(at.getHours())}${pad(at.getMinutes())}${pad(at.getSeconds())}${pad(at.getMilliseconds(), 3)}`;
+  const employee = employeeId.trim().replace(/[^a-zA-Z0-9_-]/g, "-") || "employee";
+  return `${date}_${employee}_${time}_${method}`;
+}
+
 export async function gpsCheckIn(employee: PunchEmployee, location: LocationPoint): Promise<string> {
   const now = new Date();
   const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const ref = await addDoc(collection(db, "attendance"), {
+  const recordId = attendanceDocumentId(employee.employeeId, now, "gps");
+  await setDoc(doc(db, "attendance", recordId), {
     employeeId: employee.employeeId,
     employeeName: employee.fullName,
     branchId: employee.branchId ?? "",
@@ -319,7 +328,7 @@ export async function gpsCheckIn(employee: PunchEmployee, location: LocationPoin
     period,
     createdAt: serverTimestamp(),
   });
-  return ref.id;
+  return recordId;
 }
 
 export async function gpsCheckOut(recordId: string, checkInAt: Date, location: LocationPoint): Promise<void> {

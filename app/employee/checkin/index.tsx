@@ -130,7 +130,7 @@ export default function GpsCheckIn() {
         </View>
 
         <Text style={styles.title}>GPS Check-in</Text>
-        <Text style={styles.subtitle}>{branch ? branch.name : "No branch assigned"}</Text>
+        <Text style={styles.subtitle}>{branch?.name ?? employee.branchName ?? "No branch assigned"}</Text>
 
         {/* Geofence status card */}
         <View style={styles.card}>
@@ -170,7 +170,11 @@ export default function GpsCheckIn() {
               )}
             </View>
           )}
-          {locState === "ready" && !branch && <Text style={styles.locDenied}>No branch is assigned to your profile — ask HR to set one.</Text>}
+          {locState === "ready" && !branch && (employee.branchId || employee.branchName ? (
+            <Text style={styles.locMuted}>No geofence configured for this branch — GPS check-in is allowed. HR can set one in the Org tab.</Text>
+          ) : (
+            <Text style={styles.locDenied}>No branch is assigned to your profile — ask HR to set one.</Text>
+          ))}
         </View>
 
         {/* Punch button */}

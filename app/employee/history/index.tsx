@@ -392,11 +392,21 @@ function hhmm(totalMinutes: number) {
   return `${String(Math.floor(totalMinutes / 60)).padStart(2, "0")}:${String(totalMinutes % 60).padStart(2, "0")}`;
 }
 
+// Worked span in minutes, computed from the real punches so overnight shifts
+// (check-out clock time earlier than check-in) roll over midnight instead of
+// showing 00:00. Capped so a forgotten time-out doesn't display absurd hours.
+function shiftMinutes(record: AttendanceRecord): number | null {
+  if (!record.checkOutAt) return null;
+  let diff = Math.round((record.checkOutAt.getTime() - record.checkInAt.getTime()) / 60000);
+  if (diff < 0) diff += 24 * 60; // crossed midnight
+  return Math.min(Math.max(0, diff), MAX_SHIFT_MINUTES);
+}
+
 function AttendanceCard({ record }: { record: AttendanceRecord }) {
   const checkInText = formatTime(record.checkInAt);
   const checkOutText = record.checkOutAt ? formatTime(record.checkOutAt) : "--:--";
-  const totalText =
-    typeof record.totalMinutes === "number" ? hhmm(Math.min(record.totalMinutes, MAX_SHIFT_MINUTES)) : "--:--";
+  const totalMin = shiftMinutes(record);
+  const totalText = totalMin !== null ? hhmm(totalMin) : "--:--";
 
   const hasBreak = !!(record.breakOutAt || record.breakInAt);
   const breakOutText = record.breakOutAt ? formatTime(record.breakOutAt) : "--:--";

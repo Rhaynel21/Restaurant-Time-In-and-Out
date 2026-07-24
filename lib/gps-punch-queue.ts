@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Timestamp, collection, doc, setDoc, updateDoc } from "firebase/firestore";
 
-import type { EmployeeProfile } from "@/lib/attendance";
+import { attendanceDocumentId, type EmployeeProfile } from "@/lib/attendance";
 import { LocationPoint } from "@/lib/branches";
 import { db } from "@/lib/firebase";
 
@@ -24,9 +24,10 @@ async function writeQueue(rows: QueuedGpsCheckIn[]) { await AsyncStorage.setItem
 
 export async function queueGpsCheckIn(employee: Employee, location: LocationPoint) {
   const rows = await readQueue();
+  const capturedAt = new Date();
   const item: QueuedGpsCheckIn = {
-    id: `gps_${employee.employeeId}_${Date.now()}`,
-    employee, location, capturedAt: new Date().toISOString(),
+    id: attendanceDocumentId(employee.employeeId, capturedAt, "gps"),
+    employee, location, capturedAt: capturedAt.toISOString(),
   };
   rows.push(item);
   await writeQueue(rows);

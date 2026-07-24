@@ -32,6 +32,9 @@ yarn-error.*
 
 # local env files
 .env*.local
+# root app env (values are EXPO_PUBLIC / non-secret, but keep them out of git;
+# copy .env.example → .env locally). .env.example stays tracked as the template.
+/.env
 
 # typescript
 *.tsbuildinfo

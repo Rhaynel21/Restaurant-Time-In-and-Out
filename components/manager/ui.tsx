@@ -288,6 +288,9 @@ export function TextField({
   suffix,
   autoCapitalize,
   editable = true,
+  autoGrow = false,
+  multilineMinHeight = 110,
+  selectBracketedPlaceholder = false,
 }: {
   label?: string;
   value: string;
@@ -301,13 +304,21 @@ export function TextField({
   suffix?: string;
   autoCapitalize?: "none" | "sentences" | "words" | "characters";
   editable?: boolean;
+  autoGrow?: boolean;
+  multilineMinHeight?: number;
+  selectBracketedPlaceholder?: boolean;
 }) {
+  const [contentHeight, setContentHeight] = useState(multilineMinHeight);
+  const [selection, setSelection] = useState<{ start: number; end: number } | undefined>();
   return (
     <Field label={label} error={error} hint={hint}>
       <View style={[styles.inputWrap, !editable && styles.inputDisabled]}>
         <TextInput
           value={value}
-          onChangeText={onChangeText}
+          onChangeText={(text) => {
+            setSelection(undefined);
+            onChangeText(text);
+          }}
           placeholder={placeholder}
           placeholderTextColor={Colors.textPlaceholder}
           multiline={multiline}
@@ -315,7 +326,26 @@ export function TextField({
           secureTextEntry={secureTextEntry}
           autoCapitalize={autoCapitalize}
           editable={editable}
-          style={[styles.input, multiline && styles.inputMultiline, webInputReset]}
+          selection={selection}
+          onSelectionChange={selectBracketedPlaceholder ? (event) => {
+            const { start, end } = event.nativeEvent.selection;
+            if (start !== end) return;
+            const open = value.lastIndexOf("[", start);
+            const close = value.indexOf("]", start);
+            if (open >= 0 && close >= start && !value.slice(open + 1, start).includes("]")) {
+              setSelection({ start: open, end: close + 1 });
+            } else {
+              setSelection(undefined);
+            }
+          } : undefined}
+          scrollEnabled={!autoGrow}
+          onContentSizeChange={autoGrow ? (event) => setContentHeight(event.nativeEvent.contentSize.height) : undefined}
+          style={[
+            styles.input,
+            multiline && styles.inputMultiline,
+            autoGrow && { minHeight: multilineMinHeight, height: Math.max(multilineMinHeight, Math.ceil(contentHeight)) },
+            webInputReset,
+          ]}
         />
         {suffix ? <Text style={styles.inputSuffix}>{suffix}</Text> : null}
       </View>
@@ -403,30 +433,38 @@ export function Select({
     : null;
   return (
     <View style={[styles.selectWrap, width ? { width } : { alignSelf: "stretch" }, open && styles.selectWrapOpen]}>
-      <Pressable ref={triggerRef} style={[styles.selectBtn, open && styles.selectBtnOpen]} onPress={() => (open ? close() : openMenu())}>
-        <Text style={[styles.selectValue, !current && { color: Colors.textFaint, fontWeight: "500" }]} numberOfLines={1}>
-          {current?.label ?? placeholder}
-        </Text>
-        <MaterialCommunityIcons name={open ? "chevron-up" : "chevron-down"} size={18} color={open ? Colors.primary : Colors.textMuted} />
-      </Pressable>
+      {searchable ? (
+        // Type-ahead combobox: the trigger IS the search box (no separate one).
+        <View ref={triggerRef} style={[styles.selectBtn, open && styles.selectBtnOpen]}>
+          <MaterialCommunityIcons name="magnify" size={16} color={Colors.textFaint} />
+          <TextInput
+            value={open ? query : current?.label ?? ""}
+            onChangeText={(t) => {
+              if (!open) openMenu();
+              setQuery(t);
+            }}
+            onFocus={openMenu}
+            placeholder={placeholder}
+            placeholderTextColor={Colors.textPlaceholder}
+            style={[styles.selectComboInput, webInputReset]}
+          />
+          <Pressable onPress={() => (open ? close() : openMenu())} hitSlop={6}>
+            <MaterialCommunityIcons name={open ? "chevron-up" : "chevron-down"} size={18} color={open ? Colors.primary : Colors.textMuted} />
+          </Pressable>
+        </View>
+      ) : (
+        <Pressable ref={triggerRef} style={[styles.selectBtn, open && styles.selectBtnOpen]} onPress={() => (open ? close() : openMenu())}>
+          <Text style={[styles.selectValue, !current && { color: Colors.textFaint, fontWeight: "500" }]} numberOfLines={1}>
+            {current?.label ?? placeholder}
+          </Text>
+          <MaterialCommunityIcons name={open ? "chevron-up" : "chevron-down"} size={18} color={open ? Colors.primary : Colors.textMuted} />
+        </Pressable>
+      )}
       {open && portal(
         <>
           <Pressable style={fixedFill} onPress={close} />
           <View style={[styles.selectMenu, fixedMenu]}>
-            {searchable && (
-              <View style={styles.selectSearch}>
-                <MaterialCommunityIcons name="magnify" size={16} color={Colors.textFaint} />
-                <TextInput
-                  value={query}
-                  onChangeText={setQuery}
-                  placeholder="Search…"
-                  placeholderTextColor={Colors.textPlaceholder}
-                  style={[styles.selectSearchInput, webInputReset]}
-                  autoFocus
-                />
-              </View>
-            )}
-            <ScrollView style={styles.selectScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <ScrollView style={styles.selectScroll} showsVerticalScrollIndicator keyboardShouldPersistTaps="handled">
               {shown.length === 0 ? (
                 <Text style={styles.selectEmpty}>No matches</Text>
               ) : (
@@ -633,23 +671,49 @@ export function StatTile({
   sub,
   icon,
   tone = "neutral",
+  onPress,
+  selected = false,
 }: {
   label: string;
   value: string | number;
   sub?: string;
   icon: MdIcon;
   tone?: StatTone;
+  onPress?: () => void;
+  selected?: boolean;
 }) {
-  return (
-    <View style={styles.tile}>
+  const content = (
+    <>
       <View style={[styles.tileIcon, tileTint[tone]]}>
         <MaterialCommunityIcons name={icon} size={18} color={tileFg[tone]} />
       </View>
       <Text style={styles.tileValue}>{value}</Text>
       <Text style={styles.tileLabel}>{label}</Text>
       {sub ? <Text style={styles.tileSub} numberOfLines={1}>{sub}</Text> : null}
-    </View>
+    </>
   );
+
+  if (onPress) {
+    return (
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: selected }}
+        accessibilityLabel={`${label}: ${value}. Show details`}
+        style={({ pressed }) => [styles.tile, styles.tileInteractive, selected && styles.tileSelected, pressed && styles.tilePressed]}
+      >
+        {content}
+        <MaterialCommunityIcons
+          name={selected ? "chevron-up" : "chevron-down"}
+          size={17}
+          color={selected ? Colors.primary : Colors.textFaint}
+          style={styles.tileChevron}
+        />
+      </Pressable>
+    );
+  }
+
+  return <View style={styles.tile}>{content}</View>;
 }
 
 // A label ─ value line for key/value summaries (payslips, final-pay breakdowns).
@@ -782,13 +846,14 @@ const inlineFg: Record<string, string> = {
   error: Colors.danger,
 };
 
-const cardShadow = {
-  shadowColor: "#1F2937",
-  shadowOffset: { width: 0, height: 2 },
-  shadowOpacity: 0.045,
-  shadowRadius: 10,
-  elevation: 1,
-} as const;
+// A soft, layered elevation. On web we use a two-stop box-shadow (a tight contact
+// shadow plus a wider ambient one) which reads far more refined than RN's single
+// blur; native keeps the equivalent single-shadow approximation.
+const cardShadow = (
+  Platform.OS === "web"
+    ? { boxShadow: "0 1px 2px rgba(31, 41, 55, 0.04), 0 6px 20px rgba(31, 41, 55, 0.055)" }
+    : { shadowColor: "#1F2937", shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 1 }
+) as unknown as ViewStyle;
 
 const styles = StyleSheet.create({
   grow: { flex: 1, minWidth: 0 },
@@ -929,6 +994,7 @@ const styles = StyleSheet.create({
   selectItemTextOn: { color: Colors.primary, fontWeight: "800" },
   selectSearch: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, height: 40, borderBottomWidth: 1, borderBottomColor: Colors.hairline },
   selectSearchInput: { flex: 1, fontSize: 14, color: Colors.textPrimary, paddingVertical: 0 },
+  selectComboInput: { flex: 1, fontSize: 14, color: Colors.textPrimary, fontWeight: "600", paddingVertical: 0 },
   selectEmpty: { fontSize: 13, color: Colors.textFaint, fontWeight: "600", paddingHorizontal: 12, paddingVertical: 12 },
 
   table: {
@@ -978,8 +1044,12 @@ const styles = StyleSheet.create({
     padding: 16,
     ...cardShadow,
   },
+  tileInteractive: { position: "relative" },
+  tileSelected: { borderColor: Colors.primary, backgroundColor: Colors.primaryTint },
+  tilePressed: { opacity: 0.82 },
+  tileChevron: { position: "absolute", top: 16, right: 14 },
   tileIcon: { width: 38, height: 38, borderRadius: 11, alignItems: "center", justifyContent: "center", marginBottom: 12 },
-  tileValue: { fontSize: 27, fontWeight: "800", color: Colors.textPrimary, letterSpacing: -0.5 },
+  tileValue: { fontSize: 27, fontWeight: "800", color: Colors.textPrimary, letterSpacing: -0.5, fontVariant: ["tabular-nums"] },
   tileLabel: { fontSize: 12.5, color: Colors.textPrimary, marginTop: 2, fontWeight: "700" },
   tileSub: { fontSize: 11.5, color: Colors.textFaint, marginTop: 2, fontWeight: "600" },
 

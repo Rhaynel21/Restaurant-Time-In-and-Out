@@ -239,6 +239,29 @@ export function SchedulesTab({ managerName, allowed }: { managerName: string; al
         : { ...prev, breakStart: "12:00", breakEnd: "13:00" };
     });
 
+  // Add break hours: push the break end later by N minutes (starts a 12:00 break
+  // if none is set yet).
+  const extendBreak = (mins: number) =>
+    setSched((prev) => {
+      if (!prev) return prev;
+      const start = prev.breakStart || "12:00";
+      const [eh, em] = (prev.breakEnd || start).split(":").map(Number);
+      let total = (Number.isFinite(eh) ? eh : 12) * 60 + (Number.isFinite(em) ? em : 0) + mins;
+      total = Math.max(0, Math.min(24 * 60 - 1, total));
+      const hh = String(Math.floor(total / 60)).padStart(2, "0");
+      const mm = String(total % 60).padStart(2, "0");
+      return { ...prev, breakStart: start, breakEnd: `${hh}:${mm}` };
+    });
+
+  // Break length in minutes (for the live "1h 0m" readout).
+  const breakMinutes = (() => {
+    if (!sched?.breakStart || !sched?.breakEnd) return 0;
+    const [sh, sm] = sched.breakStart.split(":").map(Number);
+    const [eh, em] = sched.breakEnd.split(":").map(Number);
+    if ([sh, sm, eh, em].some((n) => !Number.isFinite(n))) return 0;
+    return Math.max(0, eh * 60 + em - (sh * 60 + sm));
+  })();
+
   const addOverride = () => {
     if (!sched) return;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(ovDate)) {
@@ -516,31 +539,41 @@ export function SchedulesTab({ managerName, allowed }: { managerName: string; al
             )}
           </Card>
 
-          <SectionTitle>Meal Break</SectionTitle>
+          <SectionTitle>Break</SectionTitle>
           <Card>
             {(() => {
               const noBreak = !sched.breakStart || !sched.breakEnd;
+              const durText = breakMinutes > 0 ? `${Math.floor(breakMinutes / 60)}h ${breakMinutes % 60}m` : "";
               return (
                 <>
                   <View style={styles.breakRow}>
-                    <MaterialCommunityIcons name="silverware-fork-knife" size={18} color={Colors.textMuted} />
+                    <MaterialCommunityIcons name="coffee-outline" size={18} color={Colors.textMuted} />
                     <TextInput
-                      style={[styles.timeInput, noBreak && styles.disabled, webNoOutline]}
+                      style={[styles.timeInput, webNoOutline]}
                       value={sched.breakStart ?? ""}
-                      editable={!noBreak}
-                      onChangeText={(t) => setBreak({ breakStart: t })}
+                      onChangeText={(t) => setBreak({ breakStart: t, ...(sched.breakEnd == null ? { breakEnd: "13:00" } : null) })}
                       placeholder="12:00"
                       placeholderTextColor={Colors.textPlaceholder}
                     />
                     <Text style={styles.dash}>–</Text>
                     <TextInput
-                      style={[styles.timeInput, noBreak && styles.disabled, webNoOutline]}
+                      style={[styles.timeInput, webNoOutline]}
                       value={sched.breakEnd ?? ""}
-                      editable={!noBreak}
-                      onChangeText={(t) => setBreak({ breakEnd: t })}
+                      onChangeText={(t) => setBreak({ breakEnd: t, ...(sched.breakStart == null ? { breakStart: "12:00" } : null) })}
                       placeholder="13:00"
                       placeholderTextColor={Colors.textPlaceholder}
                     />
+                    {!noBreak && durText ? <Text style={styles.breakDur}>{durText}</Text> : null}
+                    {!noBreak && (
+                      <>
+                        <Pressable style={styles.breakAddBtn} onPress={() => extendBreak(15)}>
+                          <Text style={styles.breakAddText}>+15m</Text>
+                        </Pressable>
+                        <Pressable style={styles.breakAddBtn} onPress={() => extendBreak(30)}>
+                          <Text style={styles.breakAddText}>+30m</Text>
+                        </Pressable>
+                      </>
+                    )}
                     <View style={styles.breakSpacer} />
                     <Pressable style={styles.restToggle} onPress={toggleNoBreak}>
                       <View style={[styles.checkbox, noBreak && styles.checkboxOn]}>
@@ -550,8 +583,8 @@ export function SchedulesTab({ managerName, allowed }: { managerName: string; al
                     </Pressable>
                   </View>
                   <Text style={styles.breakHint}>
-                    Unpaid meal break deducted from worked hours. The biometric terminal uses this window to tag break-out /
-                    break-in punches.
+                    Unpaid break deducted from worked hours. The biometric terminal uses this window to tag break-out /
+                    break-in punches. Type any time, or use +15m / +30m to add break hours.
                   </Text>
                 </>
               );
@@ -795,6 +828,9 @@ const styles = StyleSheet.create({
   breakRow: { flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" },
   breakSpacer: { flex: 1 },
   breakHint: { fontSize: 12, color: Colors.textFaint, marginTop: 12, lineHeight: 17 },
+  breakDur: { fontSize: 12, fontWeight: "800", color: Colors.primary, fontVariant: ["tabular-nums"] },
+  breakAddBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: Colors.warmSurface, borderWidth: 1, borderColor: Colors.warmBorder },
+  breakAddText: { fontSize: 12, fontWeight: "700", color: Colors.primaryDark },
   rowBorder: { borderBottomWidth: 1, borderBottomColor: Colors.hairline },
   weekDay: {
     width: 42,

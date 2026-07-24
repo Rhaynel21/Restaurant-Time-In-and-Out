@@ -17,6 +17,11 @@ function optional(name, fallback) {
   return value && value.trim() !== "" ? value.trim() : fallback;
 }
 
+function boundedNumber(name, fallback, minimum) {
+  const value = Number(optional(name, String(fallback)));
+  return Number.isFinite(value) ? Math.max(minimum, value) : fallback;
+}
+
 // Optional employeeNo -> app employeeId map. If a scanned person's device ID
 // isn't in here, the bridge uses the raw device ID (uppercased) as the app's
 // employeeId, so simple deployments can skip the map entirely.
@@ -31,30 +36,17 @@ function loadEmployeeMap() {
   }
 }
 
-// Live simulation mode (tri-state):
-//   "on"   — always simulate (SIMULATE=1/true/on/yes), no device needed
-//   "off"  — never simulate (SIMULATE=0/false/off/no); fail if device is missing
-//   "auto" — try the device; fall back to simulation if it can't be reached
-function simulateMode() {
-  const v = (process.env.SIMULATE || "").trim().toLowerCase();
-  if (["1", "true", "on", "yes"].includes(v)) return "on";
-  if (["0", "false", "off", "no"].includes(v)) return "off";
-  return "auto";
-}
-
 const config = {
-  // Device / network. Optional so the bridge can start in simulate mode with no
-  // .env at all; device mode validates these before it polls.
+  // Device / network. The bridge only processes events from a real terminal.
   deviceBaseUrl: optional("HIK_HOST", "").replace(/\/+$/, ""), // e.g. http://192.168.1.64
   username: optional("HIK_USER", ""),
   password: optional("HIK_PASS", ""),
 
-  // ── Live simulation ──
-  simulate: simulateMode(),
-  simulateTickMs: Number(optional("SIMULATE_TICK_MS", "8000")),
-
   // Polling
-  pollIntervalMs: Number(optional("POLL_INTERVAL_MS", "5000")),
+  // One-second polling keeps punches feeling live without hammering the terminal.
+  // Clamp custom values because overly aggressive polling can trigger device
+  // throttling and, on some models, authentication lockouts.
+  pollIntervalMs: boundedNumber("POLL_INTERVAL_MS", 1000, 1000),
   eventMajor: Number(optional("HIK_EVENT_MAJOR", "5")), // 5 = access-control event
   eventMinor: Number(optional("HIK_EVENT_MINOR", "0")), // 0 = all minor types
   tzOffset: optional("HIK_TZ_OFFSET", "+08:00"), // Philippines
